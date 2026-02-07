@@ -1189,4 +1189,8 @@ body {
         gap: 16px;
         text-align: center;
     }
+    .btn-login{
+        font-weight: 200;
+        padding: 3px 8px;
+
 }
