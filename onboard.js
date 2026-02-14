@@ -184,10 +184,12 @@ form.addEventListener('submit', function(e) {
 
 // Track form abandonment (when user leaves without completing)
 let formStarted = false;
+let formTouched = false;
 
 form.addEventListener('input', function() {
     if (!formStarted) {
         formStarted = true;
+        formTouched = true;
         
         if (window.analytics) {
             analytics.track('Form Started', {
@@ -199,15 +201,52 @@ form.addEventListener('input', function() {
     }
 });
 
-window.addEventListener('beforeunload', function() {
-    if (formStarted && !localStorage.getItem('onboarding_step1')) {
+// Track page exit/close
+window.addEventListener('beforeunload', function(e) {
+    if (formTouched && !localStorage.getItem('onboarding_step1')) {
+        // Track abandonment
         if (window.analytics) {
             analytics.track('Form Abandoned', {
                 step: 1,
                 step_name: 'Business Information',
                 business_name: businessNameInput.value,
                 business_email: businessEmailInput.value,
-                country: countrySelect.value
+                country: countrySelect.value,
+                fields_filled: {
+                    business_name: !!businessNameInput.value,
+                    business_email: !!businessEmailInput.value,
+                    country: !!countrySelect.value
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+});
+
+// Track when user navigates away (back button, close tab, etc.)
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden && formTouched && !localStorage.getItem('onboarding_step1')) {
+        if (window.analytics) {
+            analytics.track('Page Hidden - Form Not Completed', {
+                step: 1,
+                step_name: 'Business Information',
+                business_name: businessNameInput.value,
+                business_email: businessEmailInput.value,
+                country: countrySelect.value,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+});
+
+// Track back button navigation
+window.addEventListener('popstate', function() {
+    if (formTouched && !localStorage.getItem('onboarding_step1')) {
+        if (window.analytics) {
+            analytics.track('Browser Back Button Clicked', {
+                step: 1,
+                step_name: 'Business Information',
+                timestamp: new Date().toISOString()
             });
         }
     }
