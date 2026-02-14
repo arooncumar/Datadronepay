@@ -1,5 +1,7 @@
 // Onboarding Step 2 - Contact Details
 // Check if user came from step 1
+let pageTracked = false;
+
 window.addEventListener('load', function() {
     const step1Data = localStorage.getItem('onboarding_step1');
     
@@ -9,18 +11,21 @@ window.addEventListener('load', function() {
         return;
     }
     
-    console.log('Step 2: Contact Details page loaded');
-    
-    // Track page view event
-    if (window.analytics) {
-        const step1 = JSON.parse(step1Data);
-        analytics.track('Onboarding Step Viewed', {
-            step: 2,
-            step_name: 'Contact Details',
-            previous_step_completed: true,
-            business_email: step1.businessEmail,
-            timestamp: new Date().toISOString()
-        });
+    if (!pageTracked) {
+        pageTracked = true;
+        console.log('Step 2: Contact Details page loaded');
+        
+        // Track page view event
+        if (window.analytics) {
+            const step1 = JSON.parse(step1Data);
+            analytics.track('Onboarding Step Viewed', {
+                step: 2,
+                step_name: 'Contact Details',
+                previous_step_completed: true,
+                business_email: step1.businessEmail,
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 });
 
@@ -30,11 +35,16 @@ function goBack() {
     if (window.analytics) {
         analytics.track('Back Button Clicked', {
             step: 2,
-            step_name: 'Contact Details'
+            step_name: 'Contact Details',
+            going_to: 'Step 1',
+            timestamp: new Date().toISOString()
         });
     }
     
-    window.location.href = 'onboarding-step1.html';
+    // Small delay to ensure tracking completes
+    setTimeout(function() {
+        window.location.href = 'onboarding-step1.html';
+    }, 200);
 }
 
 // Form validation
