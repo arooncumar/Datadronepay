@@ -218,10 +218,12 @@ form.addEventListener('submit', function(e) {
 
 // Track form abandonment
 let formStarted = false;
+let formTouched = false;
 
 form.addEventListener('input', function() {
     if (!formStarted) {
         formStarted = true;
+        formTouched = true;
         
         if (window.analytics) {
             analytics.track('Form Started', {
@@ -233,15 +235,51 @@ form.addEventListener('input', function() {
     }
 });
 
-window.addEventListener('beforeunload', function() {
-    if (formStarted && !localStorage.getItem('onboarding_step2')) {
+// Track page exit/close
+window.addEventListener('beforeunload', function(e) {
+    if (formTouched && !localStorage.getItem('onboarding_step2')) {
         if (window.analytics) {
             analytics.track('Form Abandoned', {
                 step: 2,
                 step_name: 'Contact Details',
                 contact_name: contactNameInput.value,
                 phone_number: phoneNumberInput.value,
-                job_title: jobTitleInput.value
+                job_title: jobTitleInput.value,
+                fields_filled: {
+                    contact_name: !!contactNameInput.value,
+                    phone_number: !!phoneNumberInput.value,
+                    job_title: !!jobTitleInput.value
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+});
+
+// Track when user navigates away
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden && formTouched && !localStorage.getItem('onboarding_step2')) {
+        if (window.analytics) {
+            analytics.track('Page Hidden - Form Not Completed', {
+                step: 2,
+                step_name: 'Contact Details',
+                contact_name: contactNameInput.value,
+                phone_number: phoneNumberInput.value,
+                job_title: jobTitleInput.value,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+});
+
+// Track back button navigation
+window.addEventListener('popstate', function() {
+    if (formTouched && !localStorage.getItem('onboarding_step2')) {
+        if (window.analytics) {
+            analytics.track('Browser Back Button Clicked', {
+                step: 2,
+                step_name: 'Contact Details',
+                timestamp: new Date().toISOString()
             });
         }
     }
