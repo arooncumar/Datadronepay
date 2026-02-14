@@ -174,49 +174,73 @@ form.addEventListener('submit', function(e) {
         localStorage.setItem('tazapay_user', JSON.stringify(userData));
         localStorage.setItem('tazapay_previous_login', 'true');
         
-        // IDENTIFY USER IN SEGMENT
-        // This is the key part for unifying the user
-        if (window.analytics) {
-            // Identify the user with their email as unique ID
-            analytics.identify(email, {
-                email: email,
-                name: userData.name,
-                logged_in: true,
-                login_method: 'email_password',
-                remember_me: rememberMe,
-                first_login: !localStorage.getItem('tazapay_previous_login'),
-                last_login: new Date().toISOString(),
-                email_domain: email.split('@')[1]
-            }, function() {
-                console.log('Segment identify callback completed');
-            });
-            
-            // Track successful login event
-            analytics.track('User Logged In', {
-                email: email,
-                login_method: 'email_password',
-                remember_me: rememberMe,
-                attempt_number: loginAttempts,
-                success: true,
-                timestamp: new Date().toISOString()
-            }, function() {
-                console.log('Login event tracked');
-                
-                // ONLY redirect after Segment has processed the events
-                setTimeout(function() {
-                    console.log('Redirecting to homepage...');
-                    window.location.href = 'index.html';
-                }, 500);
-            });
-        } else {
-            // If Segment isn't loaded, still redirect
-            console.log('Segment not loaded, redirecting anyway');
-            setTimeout(function() {
+        // Set a failsafe timeout - redirect after 3 seconds no matter what
+        let redirected = false;
+        const failsafeTimeout = setTimeout(function() {
+            if (!redirected) {
+                console.log('Failsafe redirect triggered');
+                redirected = true;
                 window.location.href = 'index.html';
-            }, 500);
+            }
+        }, 3000);
+        
+        // Try to track with Segment
+        if (window.analytics && typeof window.analytics.identify === 'function') {
+            try {
+                // Identify the user
+                analytics.identify(email, {
+                    email: email,
+                    name: userData.name,
+                    logged_in: true,
+                    login_method: 'email_password',
+                    remember_me: rememberMe,
+                    first_login: !localStorage.getItem('tazapay_previous_login'),
+                    last_login: new Date().toISOString(),
+                    email_domain: email.split('@')[1]
+                });
+                
+                // Track login event
+                analytics.track('User Logged In', {
+                    email: email,
+                    login_method: 'email_password',
+                    remember_me: rememberMe,
+                    attempt_number: loginAttempts,
+                    success: true,
+                    timestamp: new Date().toISOString()
+                });
+                
+                console.log('Segment tracking sent');
+                
+                // Wait a bit for Segment to process, then redirect
+                setTimeout(function() {
+                    if (!redirected) {
+                        console.log('Normal redirect after Segment');
+                        redirected = true;
+                        clearTimeout(failsafeTimeout);
+                        window.location.href = 'index.html';
+                    }
+                }, 800);
+                
+            } catch (error) {
+                console.error('Segment error:', error);
+                // Redirect anyway if Segment fails
+                if (!redirected) {
+                    redirected = true;
+                    clearTimeout(failsafeTimeout);
+                    window.location.href = 'index.html';
+                }
+            }
+        } else {
+            // Segment not loaded - redirect immediately
+            console.log('Segment not available, redirecting');
+            if (!redirected) {
+                redirected = true;
+                clearTimeout(failsafeTimeout);
+                window.location.href = 'index.html';
+            }
         }
         
-    }, 1000); // Reduced delay
+    }, 1000);
 });
 
 // Track social login clicks
