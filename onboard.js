@@ -1,15 +1,20 @@
 // Onboarding Step 1 - Business Information
-// Track page load
+// Track page load ONCE
+let pageTracked = false;
+
 window.addEventListener('load', function() {
-    console.log('Step 1: Business Information page loaded');
-    
-    // Track page view event
-    if (window.analytics) {
-        analytics.track('Onboarding Step Viewed', {
-            step: 1,
-            step_name: 'Business Information',
-            timestamp: new Date().toISOString()
-        });
+    if (!pageTracked) {
+        pageTracked = true;
+        console.log('Step 1: Business Information page loaded');
+        
+        // Track page view event
+        if (window.analytics) {
+            analytics.track('Onboarding Step Viewed', {
+                step: 1,
+                step_name: 'Business Information',
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 });
 
