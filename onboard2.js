@@ -31,20 +31,34 @@ window.addEventListener('load', function() {
 
 // Go back function
 function goBack() {
-    // Track back button click
-    if (window.analytics) {
-        analytics.track('Back Button Clicked', {
-            step: 2,
-            step_name: 'Contact Details',
-            going_to: 'Step 1',
-            timestamp: new Date().toISOString()
-        });
-    }
+    console.log('===== BACK BUTTON CLICKED =====');
+    console.log('Current step: 2, Going to: Step 1');
     
-    // Small delay to ensure tracking completes
-    setTimeout(function() {
+    // Track back button click
+    if (window.analytics && typeof window.analytics.track === 'function') {
+        try {
+            analytics.track('Back Button Clicked', {
+                step: 2,
+                step_name: 'Contact Details',
+                going_to: 'Step 1',
+                timestamp: new Date().toISOString()
+            });
+            console.log('✓ Back button click tracked in Segment');
+            
+            // Wait 500ms for Segment to send the event
+            setTimeout(function() {
+                console.log('Navigating back to Step 1...');
+                window.location.href = 'onboarding-step1.html';
+            }, 500);
+        } catch (error) {
+            console.error('✗ Error tracking back button:', error);
+            // Navigate anyway even if tracking fails
+            window.location.href = 'onboarding-step1.html';
+        }
+    } else {
+        console.error('✗ Segment analytics not available');
         window.location.href = 'onboarding-step1.html';
-    }, 200);
+    }
 }
 
 // Form validation
