@@ -105,6 +105,8 @@
                                 <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
                         </button>
+                        <button onclick="handleBack('step-1')" class="btn-primary">Back</button>
+
                     </div>
                 </form>
 
@@ -127,11 +129,22 @@
             step: 1,
             step_name: "Business Information"
         });
+        function handleBack(stepName) {
+            analytics.track("Onboarding Step Back Clicked", {
+                step_name: stepName,
+                page_url: window.location.href,
+                timestamp: new Date().toISOString()
+          });
+
+          window.history.back();
+        }
+                                                                                                                                                                                                   
         }}();
     </script>
 
     <script src="onboard.js"></script>
 </body>
 </html>
+
 
 
