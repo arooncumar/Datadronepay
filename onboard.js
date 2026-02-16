@@ -1,4 +1,6 @@
 // Onboarding Step 1 - Business Information
+console.log('===== ONBOARDING STEP 1 LOADED =====');
+
 // Track page load ONCE
 let pageTracked = false;
 
@@ -8,12 +10,19 @@ window.addEventListener('load', function() {
         console.log('Step 1: Business Information page loaded');
         
         // Track page view event
-        if (window.analytics) {
-            analytics.track('Onboarding Step Viewed', {
-                step: 1,
-                step_name: 'Business Information',
-                timestamp: new Date().toISOString()
-            });
+        if (window.analytics && typeof window.analytics.track === 'function') {
+            try {
+                analytics.track('Onboarding Step Viewed', {
+                    step: 1,
+                    step_name: 'Business Information',
+                    timestamp: new Date().toISOString()
+                });
+                console.log('✓ Step 1 page view tracked');
+            } catch (error) {
+                console.error('✗ Error tracking Step 1 page view:', error);
+            }
+        } else {
+            console.error('✗ Segment analytics not available');
         }
     }
 });
@@ -119,6 +128,8 @@ countrySelect.addEventListener('change', function() {
 form.addEventListener('submit', function(e) {
     e.preventDefault();
     
+    console.log('===== STEP 1 FORM SUBMITTED =====');
+    
     // Validate all fields
     const businessNameError = validateBusinessName(businessNameInput.value);
     const emailError = validateEmail(businessEmailInput.value);
@@ -131,6 +142,7 @@ form.addEventListener('submit', function(e) {
     
     // Check if form is valid
     if (businessNameError || emailError || countryError) {
+        console.log('✗ Validation failed');
         // Track validation failure
         if (window.analytics) {
             analytics.track('Form Validation Failed', {
@@ -153,27 +165,36 @@ form.addEventListener('submit', function(e) {
         country: countrySelect.value
     };
     
+    console.log('Form data:', formData);
+    
     // Save to localStorage
     localStorage.setItem('onboarding_step1', JSON.stringify(formData));
+    console.log('✓ Data saved to localStorage');
     
     // Track successful completion
-    if (window.analytics) {
-        analytics.track('Onboarding Step Completed', {
-            step: 1,
-            step_name: 'Business Information',
-            business_name: formData.businessName,
-            business_email: formData.businessEmail,
-            country: formData.country,
-            timestamp: new Date().toISOString()
-        });
-        
-        // Identify user
-        analytics.identify(formData.businessEmail, {
-            email: formData.businessEmail,
-            business_name: formData.businessName,
-            country: formData.country,
-            onboarding_step: 1
-        });
+    if (window.analytics && typeof window.analytics.track === 'function') {
+        try {
+            analytics.track('Onboarding Step Completed', {
+                step: 1,
+                step_name: 'Business Information',
+                business_name: formData.businessName,
+                business_email: formData.businessEmail,
+                country: formData.country,
+                timestamp: new Date().toISOString()
+            });
+            console.log('✓ Step completion tracked');
+            
+            // Identify user - THIS CREATES THE UNIFIED PROFILE
+            analytics.identify(formData.businessEmail, {
+                email: formData.businessEmail,
+                business_name: formData.businessName,
+                country: formData.country,
+                onboarding_step: 1
+            });
+            console.log('✓ User identified:', formData.businessEmail);
+        } catch (error) {
+            console.error('✗ Error tracking:', error);
+        }
     }
     
     // Show loading state
@@ -183,6 +204,7 @@ form.addEventListener('submit', function(e) {
     
     // Simulate processing and redirect
     setTimeout(function() {
+        console.log('Navigating to Step 2...');
         window.location.href = 'onboarding-step2.html';
     }, 800);
 });
