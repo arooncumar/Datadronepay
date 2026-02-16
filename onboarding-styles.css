@@ -58,6 +58,31 @@ body {
     margin-right: auto;
 }
 
+.back-btn {
+  background-color: #0f5a52;   /* dark teal */
+  color: #ffffff;
+  border: none;
+  padding: 18px 0;
+  width: 100%;
+  max-width: 650px;            /* adjust if needed */
+  border-radius: 18px;
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  display: block;
+  margin: 0 auto;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.back-btn:hover {
+  background-color: #0c4a44;
+}
+
+.back-btn:active {
+  transform: scale(0.98);
+}
+
+
 .step {
     display: flex;
     flex-direction: column;
@@ -483,4 +508,5 @@ select {
     .btn-secondary {
         width: 100%;
     }
+
 }
