@@ -42,7 +42,7 @@ function goBack() {
     // Track back button click
     if (window.analytics && typeof window.analytics.track === 'function') {
         try {
-            analytics.track('Back Button Clicked', {
+            analytics.track('Back Button Clicked on step3', {
                 step: 3,
                 step_name: 'Verification',
                 going_to: 'Step 2',
@@ -367,3 +367,4 @@ window.addEventListener('popstate', function() {
         }
     }
 });
+
