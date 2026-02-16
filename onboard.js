@@ -46,7 +46,7 @@ const countrySelect = document.getElementById('country');
             // Wait 500ms for Segment to send the event
             setTimeout(function() {
                 console.log('Navigating back to Step 1...');
-                window.location.href = 'onboarding-step1.html';
+                window.location.href = 'index.html';
             }, 500);
         } catch (error) {
             console.error('✗ Error tracking back button:', error);
@@ -55,7 +55,7 @@ const countrySelect = document.getElementById('country');
         }
     } else {
         console.error('✗ Segment analytics not available');
-        window.location.href = 'onboarding-step1.html';
+        window.location.href = 'index.html';
     }
 }
 
@@ -304,4 +304,5 @@ window.addEventListener('popstate', function() {
         }
     }
 });
+
 
