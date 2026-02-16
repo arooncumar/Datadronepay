@@ -33,6 +33,7 @@ const businessNameInput = document.getElementById('businessName');
 const businessEmailInput = document.getElementById('businessEmail');
 const countrySelect = document.getElementById('country');
 
+function goBack() {
     if (window.analytics && typeof window.analytics.track === 'function') {
         try {
             analytics.track('Back Button Clicked on step 1', {
@@ -304,5 +305,6 @@ window.addEventListener('popstate', function() {
         }
     }
 });
+
 
 
