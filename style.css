@@ -74,6 +74,11 @@ body {
 /* Dropdown Menus */
 .dropdown {
     position: relative;
+    color: var(--text-dark);
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+    transition: color 0.2s;
 }
 
 .dropdown-menu {
@@ -1224,6 +1229,7 @@ body {
     }
 
 }
+
 
 
 
