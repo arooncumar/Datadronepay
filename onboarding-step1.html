@@ -1301,7 +1301,7 @@
 ══════════════════════════════════════════════ -->
 <script>
 /* ────────────────────────────────────────────
-   Twilio Segment Snippet
+   Twilio Segment Snippet 
 ──────────────────────────────────────────── */
 !function(){
   var analytics=window.analytics=window.analytics||[];
@@ -1314,7 +1314,7 @@
     for(var e=0;e<analytics.methods.length;e++){var key=analytics.methods[e];analytics[key]=analytics.factory(key);}
     analytics.load=function(key,e){var t=document.createElement("script");t.type="text/javascript";t.async=!0;t.src="https://cdn.segment.com/analytics.js/v1/" + key + "/analytics.min.js";var n=document.getElementsByTagName("script")[0];n.parentNode.insertBefore(t,n);analytics._loadOptions=e;};
     analytics.SNIPPET_VERSION="4.15.3";
-    analytics.load("suzg9Ck5EW9xT65CXpm456ObsF3r3K31"); 
+    analytics.load("suzg9Ck5EW9xT65CXpm456ObsF3r3K31");
     analytics.page("Merchant Onboarding", {
       step: "Business Identity",
       step_number: 1,
@@ -1336,7 +1336,42 @@ const state = {
   selectedBusinessType: null,
   panVerified: false,
   aadhaarOTPSent: false,
+  userEmail: null,   // populated from login session below
+  userName: null,
 };
+
+/* ─────────────────────────────────────────────────────────────────
+   SESSION LINKING — Re-identify with login email on KYC page load
+   This merges the KYC session with the same profile created on login.
+   Pull email from wherever your login page stores it (localStorage is standard).
+   Change the key name below to match what your login page saves.
+───────────────────────────────────────────────────────────────── */
+analytics.ready(function() {
+  const sessionEmail = localStorage.getItem('user_email');   // ← match your login page key
+  const sessionName  = localStorage.getItem('user_name');    // ← optional
+
+  if (sessionEmail) {
+    state.userEmail = sessionEmail;
+    state.userName  = sessionName || null;
+
+    // Re-identify so this KYC session is stitched to the login profile
+    analytics.identify({
+      email: sessionEmail,
+      ...(sessionName && { name: sessionName }),
+      kyc_form_started: true,
+      kyc_form_started_at: new Date().toISOString(),
+    });
+
+    // Show email in topbar so merchant knows they're logged in
+    const avatarEl = document.querySelector('.topbar-avatar');
+    if (avatarEl && sessionName) {
+      avatarEl.textContent = sessionName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+    }
+  } else {
+    // No session found — email will be empty in traits but tracking still works
+    console.warn('[Segment] No user_email in localStorage. KYC events will fire under anonymousId until identified.');
+  }
+});
 
 /* ─────────────────────────────────────────────────────────────────
    FIELD EVENT MAP
@@ -1558,6 +1593,10 @@ function _identifyCurrentTraits() {
 
   // Build traits object — maps form fields → clean Profile Explorer trait names
   const traits = {
+    // ── Linked identity — always included so every trait update is tied to the user ──
+    ...(state.userEmail && { email: state.userEmail }),
+    ...(state.userName  && { name: state.userName }),
+
     // ── Onboarding meta ──
     kyc_form_started: true,
     kyc_current_step: state.currentStep + 1,
@@ -2045,6 +2084,10 @@ function submitKYC() {
   // ── Full unified identify — ALL collected traits land in Profile Explorer ──
   const fd = state.formData;
   analytics.identify({
+    // ── Linked identity ──
+    ...(state.userEmail && { email: state.userEmail }),
+    ...(state.userName  && { name: state.userName }),
+
     // Onboarding status
     kyc_submitted: true,
     kyc_reference_id: refId,
@@ -2102,4 +2145,3 @@ function submitKYC() {
 
 </body>
 </html>
-
