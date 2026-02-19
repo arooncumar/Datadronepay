@@ -1,3 +1,239 @@
+/* ─────────────────────────────────────────────────────────────────
+   auth-nav.js — Drop this script into your index page
+   Reads login session from localStorage and updates the nav button.
+   No HTML changes needed.
+───────────────────────────────────────────────────────────────── */
+
+(function() {
+  const email    = localStorage.getItem('user_email');
+  const name     = localStorage.getItem('user_name');
+  const loginBtn = document.querySelector('.btn-login');
+
+  if (!loginBtn) return; // Safety check
+
+  if (email) {
+    // ── User is logged in — show their name/email with a dropdown ──
+
+    // Generate initials avatar (e.g. "Raj Kumar" → "RK")
+    const initials = name
+      ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+      : email[0].toUpperCase();
+
+    // Display name: prefer first name, fall back to email prefix
+    const displayName = name
+      ? name.split(' ')[0]           // "Raj Kumar" → "Raj"
+      : email.split('@')[0];         // "raj@acme.com" → "raj"
+
+    // Replace the login button with a user menu
+    loginBtn.outerHTML = `
+      <div class="nav-user-menu" id="navUserMenu">
+        <button class="nav-user-btn" onclick="toggleUserDropdown()" aria-haspopup="true">
+          <span class="nav-user-avatar">${initials}</span>
+          <span class="nav-user-name">${displayName}</span>
+          <svg class="nav-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="nav-user-dropdown" id="navUserDropdown">
+          <div class="nav-user-dropdown-header">
+            <div class="nud-avatar">${initials}</div>
+            <div class="nud-info">
+              <div class="nud-name">${name || displayName}</div>
+              <div class="nud-email">${email}</div>
+            </div>
+          </div>
+          <div class="nav-user-dropdown-divider"></div>
+          <a href="merchant-onboarding.html" class="nav-user-dropdown-item">
+            <span>📋</span> KYC Onboarding
+          </a>
+          <a href="#" class="nav-user-dropdown-item">
+            <span>⚙️</span> Account Settings
+          </a>
+          <div class="nav-user-dropdown-divider"></div>
+          <button class="nav-user-dropdown-item logout" onclick="handleLogout()">
+            <span>🚪</span> Logout
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Inject styles
+    const style = document.createElement('style');
+    style.textContent = `
+      .nav-user-menu { position: relative; display: inline-flex; }
+
+      .nav-user-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 14px 7px 7px;
+        background: #fff;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 999px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #0d1b2a;
+        transition: box-shadow 0.2s, border-color 0.2s;
+      }
+      .nav-user-btn:hover {
+        border-color: #00c9a7;
+        box-shadow: 0 0 0 3px rgba(0,201,167,0.12);
+      }
+
+      .nav-user-avatar {
+        width: 28px; height: 28px;
+        border-radius: 50%;
+        background: #0d1b2a;
+        color: #00c9a7;
+        font-size: 0.72rem;
+        font-weight: 800;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+        letter-spacing: 0.02em;
+      }
+
+      .nav-user-name { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      .nav-chevron {
+        color: #94a3b8;
+        transition: transform 0.2s;
+        flex-shrink: 0;
+      }
+      .nav-user-menu.open .nav-chevron { transform: rotate(180deg); }
+
+      .nav-user-dropdown {
+        display: none;
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        min-width: 230px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        overflow: hidden;
+        z-index: 999;
+        animation: dropdownIn 0.15s ease;
+      }
+      .nav-user-menu.open .nav-user-dropdown { display: block; }
+
+      @keyframes dropdownIn {
+        from { opacity: 0; transform: translateY(-6px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      .nav-user-dropdown-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 16px;
+        background: #f8fafd;
+      }
+      .nud-avatar {
+        width: 36px; height: 36px;
+        border-radius: 50%;
+        background: #0d1b2a;
+        color: #00c9a7;
+        font-size: 0.8rem;
+        font-weight: 800;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+      }
+      .nud-name {
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: #0d1b2a;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 150px;
+      }
+      .nud-email {
+        font-size: 0.75rem;
+        color: #64748b;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 150px;
+      }
+
+      .nav-user-dropdown-divider {
+        height: 1px;
+        background: #f1f5f9;
+        margin: 4px 0;
+      }
+
+      .nav-user-dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #334155;
+        text-decoration: none;
+        background: none;
+        border: none;
+        width: 100%;
+        text-align: left;
+        cursor: pointer;
+        font-family: inherit;
+        transition: background 0.15s;
+      }
+      .nav-user-dropdown-item:hover { background: #f8fafd; }
+      .nav-user-dropdown-item.logout { color: #ef4444; }
+      .nav-user-dropdown-item.logout:hover { background: #fef2f2; }
+    `;
+    document.head.appendChild(style);
+
+    // Track that logged-in user visited index
+    if (window.analytics) {
+      analytics.track('Index Page Viewed - Logged In', {
+        email: email,
+        name: name || null,
+      });
+    }
+
+  } else {
+    // ── Not logged in — keep the Login button, no changes needed ──
+    if (window.analytics) {
+      analytics.track('Index Page Viewed - Not Logged In');
+    }
+  }
+
+  // ── Dropdown toggle ──
+  window.toggleUserDropdown = function() {
+    document.getElementById('navUserMenu').classList.toggle('open');
+  };
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', function(e) {
+    const menu = document.getElementById('navUserMenu');
+    if (menu && !menu.contains(e.target)) {
+      menu.classList.remove('open');
+    }
+  });
+
+  // ── Logout ──
+  window.handleLogout = function() {
+    // Clear all session keys
+    localStorage.removeItem('user_email');
+    localStorage.removeItem('user_name');
+    localStorage.removeItem('tazapay_user');
+    // Keep tazapay_previous_login so "first_login" trait stays accurate
+
+    if (window.analytics) {
+      analytics.track('User Logged Out', { email: email });
+      analytics.reset(); // Clears Segment anonymousId — fresh session after logout
+    }
+
+    window.location.href = 'login.html';
+  };
+
+})();
+
 // Smooth scroll for navigation links
 document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     anchor.addEventListener('click', function (e) {
@@ -222,3 +458,4 @@ window.addEventListener('load', () => {
         document.body.style.opacity = '1';
     }, 100);
 });
+
