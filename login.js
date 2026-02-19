@@ -24,7 +24,6 @@ if (togglePasswordBtn) {
         const type = passwordInput.type === 'password' ? 'text' : 'password';
         passwordInput.type = type;
         
-        // Track password toggle
         if (window.analytics) {
             analytics.track('Password Visibility Toggled', {
                 visible: type === 'text'
@@ -35,23 +34,15 @@ if (togglePasswordBtn) {
 
 // Validation functions
 function validateEmail(value) {
-    if (!value || value.trim().length === 0) {
-        return 'Email is required';
-    }
+    if (!value || value.trim().length === 0) return 'Email is required';
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(value)) {
-        return 'Please enter a valid email address';
-    }
+    if (!emailRegex.test(value)) return 'Please enter a valid email address';
     return null;
 }
 
 function validatePassword(value) {
-    if (!value || value.trim().length === 0) {
-        return 'Password is required';
-    }
-    if (value.length < 6) {
-        return 'Password must be at least 6 characters';
-    }
+    if (!value || value.trim().length === 0) return 'Password is required';
+    if (value.length < 6) return 'Password must be at least 6 characters';
     return null;
 }
 
@@ -59,7 +50,6 @@ function validatePassword(value) {
 function showError(inputId, message) {
     const errorElement = document.getElementById(inputId + 'Error');
     const inputElement = document.getElementById(inputId);
-    
     if (message) {
         errorElement.textContent = message;
         errorElement.classList.add('show');
@@ -75,8 +65,6 @@ function showError(inputId, message) {
 emailInput.addEventListener('blur', function() {
     const error = validateEmail(this.value);
     showError('email', error);
-    
-    // Track email field interaction
     if (window.analytics) {
         analytics.track('Login Email Field Completed', {
             has_error: error !== null,
@@ -89,8 +77,6 @@ emailInput.addEventListener('blur', function() {
 passwordInput.addEventListener('blur', function() {
     const error = validatePassword(this.value);
     showError('password', error);
-    
-    // Track password field interaction
     if (window.analytics) {
         analytics.track('Login Password Field Completed', {
             has_error: error !== null,
@@ -99,12 +85,9 @@ passwordInput.addEventListener('blur', function() {
     }
 });
 
-// Track Remember Me checkbox
 rememberMeCheckbox.addEventListener('change', function() {
     if (window.analytics) {
-        analytics.track('Remember Me Toggled', {
-            checked: this.checked
-        });
+        analytics.track('Remember Me Toggled', { checked: this.checked });
     }
 });
 
@@ -113,37 +96,30 @@ let loginAttempts = 0;
 
 form.addEventListener('submit', function(e) {
     e.preventDefault();
-    
     loginAttempts++;
-    
-    // Validate all fields
+
     const emailError = validateEmail(emailInput.value);
     const passwordError = validatePassword(passwordInput.value);
-    
-    // Show errors
     showError('email', emailError);
     showError('password', passwordError);
-    
-    // Check if form is valid
+
     if (emailError || passwordError) {
-        // Track validation failure
         if (window.analytics) {
             analytics.track('Login Validation Failed', {
-                errors: {
-                    email: emailError,
-                    password: passwordError
-                },
+                errors: { email: emailError, password: passwordError },
                 attempt_number: loginAttempts
             });
         }
         return;
     }
-    
-    // Collect form data
+
     const email = emailInput.value.trim().toLowerCase();
     const rememberMe = rememberMeCheckbox.checked;
-    
-    // Track login attempt
+
+    // ── Derive a display name from email prefix (e.g. "raj.kumar@acme.com" → "Raj Kumar") ──
+    const nameParts = email.split('@')[0].replace(/[._-]/g, ' ').split(' ');
+    const displayName = nameParts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+
     if (window.analytics) {
         analytics.track('Login Attempt', {
             email: email,
@@ -153,28 +129,30 @@ form.addEventListener('submit', function(e) {
             timestamp: new Date().toISOString()
         });
     }
-    
-    // Show loading state
+
     const submitBtn = form.querySelector('button[type="submit"]');
     submitBtn.classList.add('loading');
     submitBtn.disabled = true;
-    
+
     // Simulate authentication (replace with actual API call)
     setTimeout(function() {
-        // Simulate successful login
         const userData = {
             email: email,
-            name: email.split('@')[0], // Extract name from email
+            name: displayName,
             logged_in: true,
             login_timestamp: new Date().toISOString(),
             remember_me: rememberMe
         };
-        
-        // Save to localStorage FIRST
+
+        // ── Existing keys (unchanged) ──
         localStorage.setItem('tazapay_user', JSON.stringify(userData));
         localStorage.setItem('tazapay_previous_login', 'true');
-        
-        // Set a failsafe timeout - redirect after 3 seconds no matter what
+
+        // ── NEW: flat keys that KYC onboarding page reads to link the profile ──
+        // These two lines are the only addition needed — KYC page does the rest
+        localStorage.setItem('user_email', email);
+        localStorage.setItem('user_name', displayName);
+
         let redirected = false;
         const failsafeTimeout = setTimeout(function() {
             if (!redirected) {
@@ -183,14 +161,14 @@ form.addEventListener('submit', function(e) {
                 window.location.href = 'index.html';
             }
         }, 3000);
-        
-        // Try to track with Segment
+
         if (window.analytics && typeof window.analytics.identify === 'function') {
             try {
-                // Identify the user
+                // ── Identify the user with email as the key trait ──
+                // All future KYC track() events will be stitched to this profile in Segment
                 analytics.identify(email, {
                     email: email,
-                    name: userData.name,
+                    name: displayName,
                     logged_in: true,
                     login_method: 'email_password',
                     remember_me: rememberMe,
@@ -198,8 +176,7 @@ form.addEventListener('submit', function(e) {
                     last_login: new Date().toISOString(),
                     email_domain: email.split('@')[1]
                 });
-                
-                // Track login event
+
                 analytics.track('User Logged In', {
                     email: email,
                     login_method: 'email_password',
@@ -208,10 +185,9 @@ form.addEventListener('submit', function(e) {
                     success: true,
                     timestamp: new Date().toISOString()
                 });
-                
+
                 console.log('Segment tracking sent');
-                
-                // Wait a bit for Segment to process, then redirect
+
                 setTimeout(function() {
                     if (!redirected) {
                         console.log('Normal redirect after Segment');
@@ -220,10 +196,9 @@ form.addEventListener('submit', function(e) {
                         window.location.href = 'index.html';
                     }
                 }, 800);
-                
+
             } catch (error) {
                 console.error('Segment error:', error);
-                // Redirect anyway if Segment fails
                 if (!redirected) {
                     redirected = true;
                     clearTimeout(failsafeTimeout);
@@ -231,7 +206,6 @@ form.addEventListener('submit', function(e) {
                 }
             }
         } else {
-            // Segment not loaded - redirect immediately
             console.log('Segment not available, redirecting');
             if (!redirected) {
                 redirected = true;
@@ -239,7 +213,7 @@ form.addEventListener('submit', function(e) {
                 window.location.href = 'index.html';
             }
         }
-        
+
     }, 1000);
 });
 
@@ -247,15 +221,9 @@ form.addEventListener('submit', function(e) {
 document.querySelectorAll('.btn-social').forEach(function(btn) {
     btn.addEventListener('click', function() {
         const provider = this.classList.contains('google') ? 'google' : 'other';
-        
         if (window.analytics) {
-            analytics.track('Social Login Clicked', {
-                provider: provider,
-                page: 'Login'
-            });
+            analytics.track('Social Login Clicked', { provider: provider, page: 'Login' });
         }
-        
-        // You would integrate actual OAuth here
         alert('Social login integration would go here');
     });
 });
@@ -265,14 +233,12 @@ const forgotPasswordLink = document.querySelector('.forgot-password');
 if (forgotPasswordLink) {
     forgotPasswordLink.addEventListener('click', function(e) {
         e.preventDefault();
-        
         if (window.analytics) {
             analytics.track('Forgot Password Clicked', {
                 email_entered: !!emailInput.value,
                 email: emailInput.value || null
             });
         }
-        
         alert('Password reset functionality would go here');
     });
 }
@@ -282,9 +248,7 @@ const signupLink = document.querySelector('.signup-link a');
 if (signupLink) {
     signupLink.addEventListener('click', function() {
         if (window.analytics) {
-            analytics.track('Signup Link Clicked', {
-                source: 'login_page'
-            });
+            analytics.track('Signup Link Clicked', { source: 'login_page' });
         }
     });
 }
@@ -295,16 +259,12 @@ let formStarted = false;
 form.addEventListener('input', function() {
     if (!formStarted) {
         formStarted = true;
-        
         if (window.analytics) {
-            analytics.track('Login Form Started', {
-                timestamp: new Date().toISOString()
-            });
+            analytics.track('Login Form Started', { timestamp: new Date().toISOString() });
         }
     }
 });
 
-// Track when user leaves without logging in
 window.addEventListener('beforeunload', function() {
     if (formStarted && !localStorage.getItem('tazapay_user')) {
         if (window.analytics) {
@@ -317,7 +277,6 @@ window.addEventListener('beforeunload', function() {
     }
 });
 
-// Track page visibility
 document.addEventListener('visibilitychange', function() {
     if (document.hidden && formStarted && !localStorage.getItem('tazapay_user')) {
         if (window.analytics) {
