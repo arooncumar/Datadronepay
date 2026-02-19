@@ -1301,7 +1301,7 @@
 ══════════════════════════════════════════════ -->
 <script>
 /* ────────────────────────────────────────────
-   Twilio Segment Snippet 
+   Twilio Segment Snippet
 ──────────────────────────────────────────── */
 !function(){
   var analytics=window.analytics=window.analytics||[];
@@ -1446,10 +1446,12 @@ function updateSaveStatus() {
 /* ────────────────────────────────────────────
    Step Navigation
 ──────────────────────────────────────────── */
-function goToStep(step) {
-  if (step !== 0 && !state.completedSteps.has(step - 1) && !state.completedSteps.has(step)) return;
+/* ─────────────────────────────────────────────────────────────────
+   STEP NAVIGATION — with full back/forward tracking + identify on every step
+───────────────────────────────────────────────────────────────── */
 
-  const prev = state.currentStep;
+// Core UI switcher (used by both forward and back navigation)
+function _switchStep(step) {
   document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
   document.getElementById(`step-${step}`).classList.add('active');
 
@@ -1466,7 +1468,6 @@ function goToStep(step) {
     }
   });
 
-  // Update progress bars
   document.querySelectorAll('.progress-step').forEach((ps, i) => {
     const bar = ps.querySelector('.ps-bar');
     ps.classList.remove('done', 'active');
@@ -1477,31 +1478,131 @@ function goToStep(step) {
 
   const pct = Math.round((state.completedSteps.size / 4) * 100);
   document.getElementById('overall-pct').textContent = `${pct}% complete`;
-
   state.currentStep = step;
-
-  analytics.track('KYC Step Viewed', {
-    step_number: step + 1,
-    step_name: getStepName(step),
-    previous_step: prev + 1,
-    form_name: 'merchant_kyc_onboarding',
-    completed_steps: Array.from(state.completedSteps),
-  });
-
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// Called when user clicks "← Back" buttons
+function goToStep(step) {
+  if (step !== 0 && !state.completedSteps.has(step - 1) && !state.completedSteps.has(step)) return;
+
+  const prev = state.currentStep;
+  const isGoingBack = step < prev;
+
+  _switchStep(step);
+
+  if (isGoingBack) {
+    // Named back-navigation event — visible clearly in Segment debugger
+    const backEventNames = [
+      null,
+      'Went Back to Business Identity',
+      'Went Back to Aadhaar Verification',
+      'Went Back to Directors & UBOs',
+      'Went Back to Bank Details',
+    ];
+    const eventName = backEventNames[step + 1] || `Went Back to ${getStepName(step)}`;
+
+    analytics.track(eventName, {
+      form_name: 'merchant_kyc_onboarding',
+      from_step_number: prev + 1,
+      from_step_name: getStepName(prev),
+      to_step_number: step + 1,
+      to_step_name: getStepName(step),
+      fields_collected_so_far: Object.keys(state.formData).length,
+    });
+  } else {
+    analytics.track('KYC Step Viewed', {
+      step_number: step + 1,
+      step_name: getStepName(step),
+      previous_step_number: prev + 1,
+      previous_step_name: getStepName(prev),
+      form_name: 'merchant_kyc_onboarding',
+    });
+  }
+
+  // Always call identify with whatever traits we have so far — keeps Profile Explorer up to date in real time
+  _identifyCurrentTraits();
+}
+
+// Called when user clicks "Continue →" buttons
 function completeStep(step) {
   state.completedSteps.add(step);
 
-  analytics.track('KYC Step Completed', {
+  const stepEventNames = [
+    'Business Identity Step Completed',
+    'Aadhaar Verification Step Completed',
+    'Directors & UBOs Step Completed',
+    'Bank Details Step Completed',
+  ];
+  analytics.track(stepEventNames[step] || `Step ${step + 1} Completed`, {
+    form_name: 'merchant_kyc_onboarding',
     step_number: step + 1,
     step_name: getStepName(step),
-    form_name: 'merchant_kyc_onboarding',
-    fields_filled: Object.keys(state.formData).length,
+    fields_collected_so_far: Object.keys(state.formData).length,
+    completion_pct: Math.round(((step + 1) / 4) * 100),
   });
 
+  // Identify with all collected traits so far — Profile Explorer updates progressively
+  _identifyCurrentTraits();
+
   if (step < 3) goToStep(step + 1);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   UNIFIED IDENTIFY — builds full trait object from all collected data
+   Called after every step completion, back navigation, and final submit
+   This is what populates Profile Explorer traits
+───────────────────────────────────────────────────────────────── */
+function _identifyCurrentTraits() {
+  const fd = state.formData;
+
+  // Build traits object — maps form fields → clean Profile Explorer trait names
+  const traits = {
+    // ── Onboarding meta ──
+    kyc_form_started: true,
+    kyc_current_step: state.currentStep + 1,
+    kyc_current_step_name: getStepName(state.currentStep),
+    kyc_steps_completed: state.completedSteps.size,
+    kyc_completion_pct: Math.round((state.completedSteps.size / 4) * 100),
+    kyc_pan_verified: state.panVerified || false,
+    kyc_aadhaar_otp_sent: state.aadhaarOTPSent || false,
+    kyc_last_active_at: new Date().toISOString(),
+
+    // ── Step 1: Business Identity ──
+    ...(fd.pan_number         && { business_pan_number: fd.pan_number }),
+    ...(fd.entity_name        && { business_entity_name: fd.entity_name }),
+    ...(fd.business_type      && { business_type: fd.business_type }),
+    ...(fd.gst_number         && { business_gst_number: fd.gst_number }),
+    ...(fd.cin_number         && { business_cin_number: fd.cin_number }),
+    ...(fd.registered_address && { business_registered_address: fd.registered_address }),
+    ...(fd.city               && { business_city: fd.city }),
+    ...(fd.state              && { business_state: fd.state }),
+    ...(fd.pincode            && { business_pincode: fd.pincode }),
+
+    // ── Step 2: Aadhaar / Authorised Signatory ──
+    ...(fd.aadhaar_full_name  && { signatory_full_name: fd.aadhaar_full_name }),
+    ...(fd.aadhaar_dob        && { signatory_dob: fd.aadhaar_dob }),
+
+    // ── Step 3: Directors ──
+    ...(fd.total_shareholders    && { total_shareholders: fd.total_shareholders }),
+    ...(fd.date_of_incorporation && { date_of_incorporation: fd.date_of_incorporation }),
+    ...(fd.director_1_name       && { director_1_name: fd.director_1_name }),
+    ...(fd.director_1_designation && { director_1_designation: fd.director_1_designation }),
+    ...(fd.director_1_shareholding_pct && { director_1_shareholding_pct: fd.director_1_shareholding_pct }),
+    ...(fd.director_1_is_ubo    && { director_1_is_ubo: fd.director_1_is_ubo }),
+    ...(fd.director_2_name      && { director_2_name: fd.director_2_name }),
+    ...(fd.director_2_designation && { director_2_designation: fd.director_2_designation }),
+    ...(fd.director_2_shareholding_pct && { director_2_shareholding_pct: fd.director_2_shareholding_pct }),
+    ...(fd.director_2_is_ubo    && { director_2_is_ubo: fd.director_2_is_ubo }),
+
+    // ── Step 4: Bank Details ──
+    ...(state.selectedBank               && { bank_name: state.selectedBank }),
+    ...(fd.bank_account_holder_name      && { bank_account_holder_name: fd.bank_account_holder_name }),
+    ...(fd.bank_account_type             && { bank_account_type: fd.bank_account_type }),
+    ...(fd.bank_ifsc_code                && { bank_ifsc_code: fd.bank_ifsc_code }),
+  };
+
+  analytics.identify(traits);
 }
 
 /* ────────────────────────────────────────────
@@ -1927,22 +2028,64 @@ function submitKYC() {
   btn.disabled = true;
 
   const refId = 'MRC-2026-' + String(Math.floor(Math.random() * 90000) + 10000);
+  state.referenceId = refId;
 
+  // ── Final named track event ──
   analytics.track('KYC Application Submitted', {
     form_name: 'merchant_kyc_onboarding',
+    reference_id: refId,
     total_steps_completed: state.completedSteps.size,
-    fields_filled: Object.keys(state.formData).length,
     pan_verified: state.panVerified,
     aadhaar_otp_sent: state.aadhaarOTPSent,
     bank_selected: state.selectedBank,
     business_type: state.formData['business_type'] || null,
-    reference_id: refId,
+    submission_timestamp: new Date().toISOString(),
   });
 
+  // ── Full unified identify — ALL collected traits land in Profile Explorer ──
+  const fd = state.formData;
   analytics.identify({
+    // Onboarding status
     kyc_submitted: true,
     kyc_reference_id: refId,
     kyc_submission_date: new Date().toISOString(),
+    kyc_completion_pct: 100,
+    kyc_steps_completed: 4,
+    kyc_pan_verified: state.panVerified || false,
+    kyc_aadhaar_otp_sent: state.aadhaarOTPSent || false,
+
+    // Business Identity
+    ...(fd.pan_number         && { business_pan_number: fd.pan_number }),
+    ...(fd.entity_name        && { business_entity_name: fd.entity_name }),
+    ...(fd.business_type      && { business_type: fd.business_type }),
+    ...(fd.gst_number         && { business_gst_number: fd.gst_number }),
+    ...(fd.cin_number         && { business_cin_number: fd.cin_number }),
+    ...(fd.registered_address && { business_registered_address: fd.registered_address }),
+    ...(fd.city               && { business_city: fd.city }),
+    ...(fd.state              && { business_state: fd.state }),
+    ...(fd.pincode            && { business_pincode: fd.pincode }),
+
+    // Signatory
+    ...(fd.aadhaar_full_name  && { signatory_full_name: fd.aadhaar_full_name }),
+    ...(fd.aadhaar_dob        && { signatory_dob: fd.aadhaar_dob }),
+
+    // Directors
+    ...(fd.total_shareholders    && { total_shareholders: fd.total_shareholders }),
+    ...(fd.date_of_incorporation && { date_of_incorporation: fd.date_of_incorporation }),
+    ...(fd.director_1_name       && { director_1_name: fd.director_1_name }),
+    ...(fd.director_1_designation && { director_1_designation: fd.director_1_designation }),
+    ...(fd.director_1_shareholding_pct && { director_1_shareholding_pct: fd.director_1_shareholding_pct }),
+    ...(fd.director_1_is_ubo    && { director_1_is_ubo: fd.director_1_is_ubo }),
+    ...(fd.director_2_name      && { director_2_name: fd.director_2_name }),
+    ...(fd.director_2_designation && { director_2_designation: fd.director_2_designation }),
+    ...(fd.director_2_shareholding_pct && { director_2_shareholding_pct: fd.director_2_shareholding_pct }),
+    ...(fd.director_2_is_ubo    && { director_2_is_ubo: fd.director_2_is_ubo }),
+
+    // Bank
+    ...(state.selectedBank               && { bank_name: state.selectedBank }),
+    ...(fd.bank_account_holder_name      && { bank_account_holder_name: fd.bank_account_holder_name }),
+    ...(fd.bank_account_type             && { bank_account_type: fd.bank_account_type }),
+    ...(fd.bank_ifsc_code                && { bank_ifsc_code: fd.bank_ifsc_code }),
   });
 
   setTimeout(() => {
