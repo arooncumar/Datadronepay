@@ -1,5 +1,5 @@
 // Onboarding Step 1 - Business Information
-console.log('===== ONBOARDING STEP 1 LOADED =====');
+/*console.log('===== ONBOARDING STEP 1 LOADED =====');
 
 // Track page load ONCE
 let pageTracked = false;
@@ -305,6 +305,8 @@ window.addEventListener('popstate', function() {
         }
     }
 });
+*/
+
 
 
 
