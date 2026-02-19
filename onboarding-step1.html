@@ -810,7 +810,7 @@
 <!-- Top Bar -->
 <header class="topbar">
   <div class="topbar-logo">
-    <img src="img5.png">
+    <span style="font-size:1.4rem">⬡</span> Pay<span>Flow</span>
   </div>
   <div class="topbar-badge">KYC Onboarding</div>
   <div class="topbar-right">
@@ -1301,7 +1301,8 @@
 ══════════════════════════════════════════════ -->
 <script>
 /* ────────────────────────────────────────────
-   Twilio Segment Snippet 
+   Twilio Segment Snippet (analytics.js v1.1)
+   Replace YOUR_WRITE_KEY with your actual key
 ──────────────────────────────────────────── */
 !function(){
   var analytics=window.analytics=window.analytics||[];
@@ -1314,7 +1315,7 @@
     for(var e=0;e<analytics.methods.length;e++){var key=analytics.methods[e];analytics[key]=analytics.factory(key);}
     analytics.load=function(key,e){var t=document.createElement("script");t.type="text/javascript";t.async=!0;t.src="https://cdn.segment.com/analytics.js/v1/" + key + "/analytics.min.js";var n=document.getElementsByTagName("script")[0];n.parentNode.insertBefore(t,n);analytics._loadOptions=e;};
     analytics.SNIPPET_VERSION="4.15.3";
-    analytics.load("suzg9Ck5EW9xT65CXpm456ObsF3r3K31");
+    analytics.load("YOUR_WRITE_KEY"); // 🔑 Replace with your Segment Write Key
     analytics.page("Merchant Onboarding", {
       step: "Business Identity",
       step_number: 1,
@@ -1372,6 +1373,24 @@ analytics.ready(function() {
     console.warn('[Segment] No user_email in localStorage. KYC events will fire under anonymousId until identified.');
   }
 });
+
+/* ─────────────────────────────────────────────────────────────────
+   segTrack() — CENTRAL TRACK WRAPPER
+   Replaces all direct segTrack() calls throughout this file.
+   Automatically injects email + user_name into EVERY event property
+   so you can see who triggered what directly in the Segment debugger,
+   without having to look up the profile separately.
+───────────────────────────────────────────────────────────────── */
+function segTrack(eventName, properties) {
+  const enriched = Object.assign({}, properties, {
+    // Always inject these — pulled from state (set on page load from localStorage)
+    email:     state.userEmail || null,
+    user_name: state.userName  || null,
+    // Always include form context
+    form_name: properties.form_name || 'merchant_kyc_onboarding',
+  });
+  segTrack(eventName, enriched);
+}
 
 /* ─────────────────────────────────────────────────────────────────
    FIELD EVENT MAP
@@ -1447,7 +1466,7 @@ function onFieldBlur(fieldId, el) {
 
   const eventName = FIELD_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Entered');
 
-  analytics.track(eventName, {
+  segTrack(eventName, {
     field_id: fieldId,
     step_number: state.currentStep + 1,
     step_name: getStepName(state.currentStep),
@@ -1537,7 +1556,7 @@ function goToStep(step) {
     ];
     const eventName = backEventNames[step + 1] || `Went Back to ${getStepName(step)}`;
 
-    analytics.track(eventName, {
+    segTrack(eventName, {
       form_name: 'merchant_kyc_onboarding',
       from_step_number: prev + 1,
       from_step_name: getStepName(prev),
@@ -1546,7 +1565,7 @@ function goToStep(step) {
       fields_collected_so_far: Object.keys(state.formData).length,
     });
   } else {
-    analytics.track('KYC Step Viewed', {
+    segTrack('KYC Step Viewed', {
       step_number: step + 1,
       step_name: getStepName(step),
       previous_step_number: prev + 1,
@@ -1569,7 +1588,7 @@ function completeStep(step) {
     'Directors & UBOs Step Completed',
     'Bank Details Step Completed',
   ];
-  analytics.track(stepEventNames[step] || `Step ${step + 1} Completed`, {
+  segTrack(stepEventNames[step] || `Step ${step + 1} Completed`, {
     form_name: 'merchant_kyc_onboarding',
     step_number: step + 1,
     step_name: getStepName(step),
@@ -1665,7 +1684,7 @@ function verifyPAN() {
   btn.innerHTML = '<span class="spinner"></span>';
   btn.disabled = true;
 
-  analytics.track('PAN Verification Initiated', {
+  segTrack('PAN Verification Initiated', {
     field_id: 'pan_number',
     form_name: 'merchant_kyc_onboarding',
     pan_type: pan[3] === 'P' ? 'individual' : 'company',
@@ -1684,7 +1703,7 @@ function verifyPAN() {
     btn.style.background = 'var(--success)';
     btn.disabled = true;
 
-    analytics.track('PAN Verification Completed', {
+    segTrack('PAN Verification Completed', {
       field_id: 'pan_number',
       form_name: 'merchant_kyc_onboarding',
       verification_status: 'success',
@@ -1711,7 +1730,7 @@ document.getElementById('gst-input').addEventListener('input', function() {
       // Fire once only — guard with a flag
       if (!this._gstValidTracked) {
         this._gstValidTracked = true;
-        analytics.track('GST Number Validated', {
+        segTrack('GST Number Validated', {
           field_id: 'gst_number',
           validation_result: 'valid',
           form_name: 'merchant_kyc_onboarding',
@@ -1727,7 +1746,7 @@ document.getElementById('gst-input').addEventListener('input', function() {
       hint.style.color = 'var(--error)';
       if (!this._gstInvalidTracked) {
         this._gstInvalidTracked = true;
-        analytics.track('GST Number Validation Failed', {
+        segTrack('GST Number Validation Failed', {
           field_id: 'gst_number',
           validation_result: 'invalid',
           form_name: 'merchant_kyc_onboarding',
@@ -1757,7 +1776,7 @@ function selectRadio(fieldId, value, el) {
 
   // Fire specific named event from map, not a generic one
   const eventName = FIELD_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Selected');
-  analytics.track(eventName, {
+  segTrack(eventName, {
     field_id: fieldId,
     selected_value: value,
     form_name: 'merchant_kyc_onboarding',
@@ -1792,7 +1811,7 @@ function showFilePreview(zoneId, fieldId, file) {
     'cancelled_cheque':             'Cancelled Cheque Uploaded',
   };
   const docEventName = DOC_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Uploaded');
-  analytics.track(docEventName, {
+  segTrack(docEventName, {
     field_id: fieldId,
     form_name: 'merchant_kyc_onboarding',
     file_type: file.type,
@@ -1837,7 +1856,7 @@ function sendAadhaarOTP() {
   btn.innerHTML = '<span class="spinner"></span>';
   btn.disabled = true;
 
-  analytics.track('Aadhaar OTP Requested', {
+  segTrack('Aadhaar OTP Requested', {
     field_id: 'aadhaar_number',
     form_name: 'merchant_kyc_onboarding',
   });
@@ -1853,7 +1872,7 @@ function sendAadhaarOTP() {
     // Focus first OTP input
     document.querySelector('.otp-input').focus();
 
-    analytics.track('Aadhaar OTP Sent', {
+    segTrack('Aadhaar OTP Sent', {
       form_name: 'merchant_kyc_onboarding',
     });
   }, 1500);
@@ -1870,7 +1889,7 @@ function otpMove(el, index) {
   const otp = Array.from(allInputs).map(i => i.value).join('');
   if (otp.length === 6 && !state._otpCompleteTracked) {
     state._otpCompleteTracked = true;
-    analytics.track('Aadhaar OTP Completed', {
+    segTrack('Aadhaar OTP Completed', {
       field_id: 'aadhaar_otp',
       form_name: 'merchant_kyc_onboarding',
       step_number: state.currentStep + 1,
@@ -1979,7 +1998,7 @@ function addDirector(isFirst = false) {
     </div>`;
   list.appendChild(card);
 
-  analytics.track('Director Added', {
+  segTrack('Director Added', {
     director_index: i,
     form_name: 'merchant_kyc_onboarding',
     total_directors: i,
@@ -1997,7 +2016,7 @@ function toggleDirector(i) {
 function removeDirector(event, i) {
   event.stopPropagation();
   document.getElementById(`director-card-${i}`).remove();
-  analytics.track('Director Removed', {
+  segTrack('Director Removed', {
     director_index: i,
     form_name: 'merchant_kyc_onboarding',
   });
@@ -2014,7 +2033,7 @@ function selectBank(bankId, el) {
   el.classList.add('selected');
   state.selectedBank = bankId;
 
-  analytics.track('Bank Selected', {
+  segTrack('Bank Selected', {
     field_id: 'bank_name',
     selected_bank: bankId,
     form_name: 'merchant_kyc_onboarding',
@@ -2036,7 +2055,7 @@ function verifyIFSC() {
   btn.innerHTML = '<span class="spinner"></span>';
   btn.disabled = true;
 
-  analytics.track('IFSC Lookup Initiated', {
+  segTrack('IFSC Lookup Initiated', {
     field_id: 'bank_ifsc_code',
     form_name: 'merchant_kyc_onboarding',
   });
@@ -2049,7 +2068,7 @@ function verifyIFSC() {
     btn.textContent = '✓ Valid';
     btn.style.background = 'var(--success)';
 
-    analytics.track('IFSC Lookup Completed', {
+    segTrack('IFSC Lookup Completed', {
       field_id: 'bank_ifsc_code',
       form_name: 'merchant_kyc_onboarding',
       verification_status: 'success',
@@ -2070,7 +2089,7 @@ function submitKYC() {
   state.referenceId = refId;
 
   // ── Final named track event ──
-  analytics.track('KYC Application Submitted', {
+  segTrack('KYC Application Submitted', {
     form_name: 'merchant_kyc_onboarding',
     reference_id: refId,
     total_steps_completed: state.completedSteps.size,
