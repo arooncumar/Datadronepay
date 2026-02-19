@@ -1089,13 +1089,13 @@
             <div class="field-group" id="otp-section" style="display:none">
               <label class="field-label">Enter OTP <span class="required">*</span></label>
               <div class="otp-group" id="otp-inputs">
-                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 0)" onkeydown="otpBack(event, 0)" onfocus="onFieldFocus('aadhaar_otp_digit_1', this)" onblur="onFieldBlur('aadhaar_otp_digit_1', this)">
-                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 1)" onkeydown="otpBack(event, 1)" onfocus="onFieldFocus('aadhaar_otp_digit_2', this)" onblur="onFieldBlur('aadhaar_otp_digit_2', this)">
-                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 2)" onkeydown="otpBack(event, 2)" onfocus="onFieldFocus('aadhaar_otp_digit_3', this)" onblur="onFieldBlur('aadhaar_otp_digit_3', this)">
+                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 0)" onkeydown="otpBack(event, 0)">
+                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 1)" onkeydown="otpBack(event, 1)">
+                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 2)" onkeydown="otpBack(event, 2)">
                 <span class="otp-sep">—</span>
-                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 3)" onkeydown="otpBack(event, 3)" onfocus="onFieldFocus('aadhaar_otp_digit_4', this)" onblur="onFieldBlur('aadhaar_otp_digit_4', this)">
-                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 4)" onkeydown="otpBack(event, 4)" onfocus="onFieldFocus('aadhaar_otp_digit_5', this)" onblur="onFieldBlur('aadhaar_otp_digit_5', this)">
-                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 5)" onkeydown="otpBack(event, 5)" onfocus="onFieldFocus('aadhaar_otp_digit_6', this)" onblur="onFieldBlur('aadhaar_otp_digit_6', this)">
+                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 3)" onkeydown="otpBack(event, 3)">
+                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 4)" onkeydown="otpBack(event, 4)">
+                <input type="text" class="otp-input" maxlength="1" oninput="otpMove(this, 5)" onkeydown="otpBack(event, 5)">
               </div>
               <span class="field-hint">OTP sent to Aadhaar-linked mobile. <a href="#" onclick="sendAadhaarOTP();return false;" style="color:var(--teal);font-weight:600;">Resend</a></span>
             </div>
@@ -1301,7 +1301,7 @@
 ══════════════════════════════════════════════ -->
 <script>
 /* ────────────────────────────────────────────
-   Twilio Segment Snippet
+   Twilio Segment Snippet 
 ──────────────────────────────────────────── */
 !function(){
   var analytics=window.analytics=window.analytics||[];
@@ -1390,35 +1390,39 @@ for (let d = 1; d <= 10; d++) {
   FIELD_EVENT_MAP[`director_${d}_aadhaar_last4`]  = `Director ${d} Aadhaar Last 4 Entered`;
 }
 
-// Track focus start time (for time-on-field metric)
+// Track focus start time + last-tracked value per field (for deduplication)
 function onFieldFocus(fieldId, el) {
   state.fieldFocusTimestamps[fieldId] = Date.now();
+  // Store value at focus time so we can check if it changed on blur
+  state.fieldValueAtFocus = state.fieldValueAtFocus || {};
+  state.fieldValueAtFocus[fieldId] = el.value || '';
   // No Segment event on focus — keeps debugger clean
 }
 
-// ✅ THIS is where the named event fires — when user leaves the field
+// ✅ Named event fires on blur — only if field has a value AND value changed since focus
 function onFieldBlur(fieldId, el) {
   const val = el.value || '';
-  if (!val.trim()) return; // Don't fire if field is empty — avoids noise from accidental clicks
+  if (!val.trim()) return; // Skip empty fields — no noise
+
+  const valueAtFocus = (state.fieldValueAtFocus || {})[fieldId] || '';
+  if (val === valueAtFocus) return; // Value didn't change — skip duplicate
 
   const focusedAt = state.fieldFocusTimestamps[fieldId];
   const timeOnField = focusedAt ? Math.round((Date.now() - focusedAt) / 1000) : null;
 
-  // Look up specific event name, or fall back to a readable default
-  const eventName = FIELD_EVENT_MAP[fieldId] || `${fieldId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} Entered`;
+  const eventName = FIELD_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Entered');
 
   analytics.track(eventName, {
     field_id: fieldId,
     step_number: state.currentStep + 1,
     step_name: getStepName(state.currentStep),
     form_name: 'merchant_kyc_onboarding',
-    has_value: true,
     char_count: val.length,
     time_on_field_seconds: timeOnField,
   });
 }
 
-// onFieldInput: only updates state + autosave UI — NO Segment event fired here
+// onFieldInput: only updates state + autosave — NO Segment event fired here (prevents per-keystroke noise)
 function onFieldInput(fieldId, el) {
   state.formData[fieldId] = el.value;
   updateSaveStatus();
@@ -1504,12 +1508,15 @@ function completeStep(step) {
    PAN Verification
 ──────────────────────────────────────────── */
 document.getElementById('pan-input').addEventListener('input', function() {
+  // Validation logic only — Segment event fires on blur via onFieldBlur
   const valid = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(this.value.toUpperCase());
   document.getElementById('pan-verify-btn').disabled = !valid;
   this.value = this.value.toUpperCase();
   if (valid) {
     document.getElementById('pan-hint').textContent = 'PAN format looks good. Click Verify.';
   }
+  state.formData['pan_number'] = this.value;
+  updateSaveStatus();
 });
 
 function verifyPAN() {
@@ -1550,6 +1557,7 @@ function verifyPAN() {
    GST Validation
 ──────────────────────────────────────────── */
 document.getElementById('gst-input').addEventListener('input', function() {
+  // Validation UI only — named Segment events fire once on blur via onFieldBlur
   this.value = this.value.toUpperCase();
   const valid = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(this.value);
   const status = document.getElementById('gst-status');
@@ -1560,20 +1568,43 @@ document.getElementById('gst-input').addEventListener('input', function() {
       status.innerHTML = '<span style="color:var(--success)">✓</span>';
       hint.textContent = '✓ Valid GST format';
       hint.style.color = 'var(--success)';
-      analytics.track('GST Validation Passed', { field_id: 'gst_number', form_name: 'merchant_kyc_onboarding' });
+      // Fire once only — guard with a flag
+      if (!this._gstValidTracked) {
+        this._gstValidTracked = true;
+        analytics.track('GST Number Validated', {
+          field_id: 'gst_number',
+          validation_result: 'valid',
+          form_name: 'merchant_kyc_onboarding',
+          step_number: state.currentStep + 1,
+          step_name: getStepName(state.currentStep),
+        });
+      }
     } else {
       this.classList.remove('success'); this.classList.add('error');
+      this._gstValidTracked = false;
       status.innerHTML = '<span style="color:var(--error)">✗</span>';
       hint.textContent = 'Invalid GST format. Check and re-enter.';
       hint.style.color = 'var(--error)';
-      analytics.track('GST Validation Failed', { field_id: 'gst_number', form_name: 'merchant_kyc_onboarding', char_count: this.value.length });
+      if (!this._gstInvalidTracked) {
+        this._gstInvalidTracked = true;
+        analytics.track('GST Number Validation Failed', {
+          field_id: 'gst_number',
+          validation_result: 'invalid',
+          form_name: 'merchant_kyc_onboarding',
+          step_number: state.currentStep + 1,
+        });
+      }
     }
   } else {
     this.classList.remove('error','success');
+    this._gstValidTracked = false;
+    this._gstInvalidTracked = false;
     status.innerHTML = '';
     hint.textContent = '15-character GST identification number';
     hint.style.color = '';
   }
+  state.formData['gst_number'] = this.value;
+  updateSaveStatus();
 });
 
 /* ────────────────────────────────────────────
@@ -1694,16 +1725,19 @@ function otpMove(el, index) {
     const inputs = document.querySelectorAll('.otp-input');
     inputs[index + 1].focus();
   }
-  // Track when all 6 digits entered
+  // Fire ONE single event only when all 6 digits are filled — guarded with flag
   const allInputs = document.querySelectorAll('.otp-input');
   const otp = Array.from(allInputs).map(i => i.value).join('');
-  if (otp.length === 6) {
-    analytics.track('Aadhaar OTP Entered', {
+  if (otp.length === 6 && !state._otpCompleteTracked) {
+    state._otpCompleteTracked = true;
+    analytics.track('Aadhaar OTP Completed', {
       field_id: 'aadhaar_otp',
       form_name: 'merchant_kyc_onboarding',
-      otp_complete: true,
+      step_number: state.currentStep + 1,
+      step_name: getStepName(state.currentStep),
     });
   }
+  if (otp.length < 6) state._otpCompleteTracked = false; // Reset if digits removed
 }
 
 function otpBack(event, index) {
