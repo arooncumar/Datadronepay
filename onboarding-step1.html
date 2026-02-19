@@ -1301,7 +1301,7 @@
 ══════════════════════════════════════════════ -->
 <script>
 /* ────────────────────────────────────────────
-   Twilio Segment
+   Twilio Segment Snippet
 ──────────────────────────────────────────── */
 !function(){
   var analytics=window.analytics=window.analytics||[];
@@ -1314,7 +1314,7 @@
     for(var e=0;e<analytics.methods.length;e++){var key=analytics.methods[e];analytics[key]=analytics.factory(key);}
     analytics.load=function(key,e){var t=document.createElement("script");t.type="text/javascript";t.async=!0;t.src="https://cdn.segment.com/analytics.js/v1/" + key + "/analytics.min.js";var n=document.getElementsByTagName("script")[0];n.parentNode.insertBefore(t,n);analytics._loadOptions=e;};
     analytics.SNIPPET_VERSION="4.15.3";
-    analytics.load("suzg9Ck5EW9xT65CXpm456ObsF3r3K31"); // 🔑 Replace with your Segment Write Key
+    analytics.load("suzg9Ck5EW9xT65CXpm456ObsF3r3K31"); 
     analytics.page("Merchant Onboarding", {
       step: "Business Identity",
       step_number: 1,
@@ -1338,47 +1338,89 @@ const state = {
   aadhaarOTPSent: false,
 };
 
-// Field-focus start time tracking for "time_on_field" metric
-function onFieldFocus(fieldId, el) {
-  state.fieldFocusTimestamps[fieldId] = Date.now();
-  analytics.track('Form Field Focused', {
-    field_id: fieldId,
-    step: state.currentStep,
-    step_name: getStepName(state.currentStep),
-    form_name: 'merchant_kyc_onboarding',
-  });
+/* ─────────────────────────────────────────────────────────────────
+   FIELD EVENT MAP
+   Each field_id maps to a specific, human-readable Segment event name.
+   This means Segment Debugger will show exactly which field was filled —
+   e.g. "PAN Number Entered" instead of the generic "Form Field Updated".
+───────────────────────────────────────────────────────────────── */
+const FIELD_EVENT_MAP = {
+  // Step 1 — Business Identity
+  'pan_number':                       'PAN Number Entered',
+  'entity_name':                      'Entity Name Confirmed',
+  'business_type':                    'Business Type Selected',
+  'gst_number':                       'GST Number Entered',
+  'cin_number':                       'CIN Number Entered',
+  'registered_address':               'Registered Address Entered',
+  'city':                             'City Entered',
+  'state':                            'State Selected',
+  'pincode':                          'PIN Code Entered',
+
+  // Step 2 — Aadhaar
+  'aadhaar_full_name':                'Authorised Signatory Name Entered',
+  'aadhaar_dob':                      'Date of Birth Entered',
+  'aadhaar_number':                   'Aadhaar Number Entered',
+  'aadhaar_otp_digit_1':              'Aadhaar OTP Started',
+  'aadhaar_otp_digit_2':              'Aadhaar OTP Digit 2 Entered',
+  'aadhaar_otp_digit_3':              'Aadhaar OTP Digit 3 Entered',
+  'aadhaar_otp_digit_4':              'Aadhaar OTP Digit 4 Entered',
+  'aadhaar_otp_digit_5':              'Aadhaar OTP Digit 5 Entered',
+  'aadhaar_otp_digit_6':              'Aadhaar OTP Completed',
+
+  // Step 3 — Directors
+  'total_shareholders':               'Total Shareholders Entered',
+  'date_of_incorporation':            'Date of Incorporation Entered',
+
+  // Step 4 — Bank
+  'bank_account_holder_name':         'Bank Account Holder Name Entered',
+  'bank_account_type':                'Bank Account Type Selected',
+  'bank_account_number':              'Bank Account Number Entered',
+  'bank_account_number_confirm':      'Bank Account Number Confirmed',
+  'bank_ifsc_code':                   'Bank IFSC Code Entered',
+};
+
+// Dynamically generate director field mappings (supports up to 10 directors)
+for (let d = 1; d <= 10; d++) {
+  FIELD_EVENT_MAP[`director_${d}_name`]           = `Director ${d} Name Entered`;
+  FIELD_EVENT_MAP[`director_${d}_designation`]    = `Director ${d} Designation Selected`;
+  FIELD_EVENT_MAP[`director_${d}_din`]            = `Director ${d} DIN Entered`;
+  FIELD_EVENT_MAP[`director_${d}_shareholding_pct`] = `Director ${d} Shareholding % Entered`;
+  FIELD_EVENT_MAP[`director_${d}_is_ubo`]         = `Director ${d} UBO Status Selected`;
+  FIELD_EVENT_MAP[`director_${d}_pan`]            = `Director ${d} PAN Entered`;
+  FIELD_EVENT_MAP[`director_${d}_aadhaar_last4`]  = `Director ${d} Aadhaar Last 4 Entered`;
 }
 
+// Track focus start time (for time-on-field metric)
+function onFieldFocus(fieldId, el) {
+  state.fieldFocusTimestamps[fieldId] = Date.now();
+  // No Segment event on focus — keeps debugger clean
+}
+
+// ✅ THIS is where the named event fires — when user leaves the field
 function onFieldBlur(fieldId, el) {
-  const val = el.value || el.innerText || '';
+  const val = el.value || '';
+  if (!val.trim()) return; // Don't fire if field is empty — avoids noise from accidental clicks
+
   const focusedAt = state.fieldFocusTimestamps[fieldId];
   const timeOnField = focusedAt ? Math.round((Date.now() - focusedAt) / 1000) : null;
 
-  analytics.track('Form Field Blurred', {
+  // Look up specific event name, or fall back to a readable default
+  const eventName = FIELD_EVENT_MAP[fieldId] || `${fieldId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} Entered`;
+
+  analytics.track(eventName, {
     field_id: fieldId,
-    step: state.currentStep,
+    step_number: state.currentStep + 1,
     step_name: getStepName(state.currentStep),
     form_name: 'merchant_kyc_onboarding',
-    has_value: val.length > 0,
+    has_value: true,
     char_count: val.length,
     time_on_field_seconds: timeOnField,
   });
 }
 
+// onFieldInput: only updates state + autosave UI — NO Segment event fired here
 function onFieldInput(fieldId, el) {
-  const val = el.value;
-  state.formData[fieldId] = val;
-
-  analytics.track('Form Field Updated', {
-    field_id: fieldId,
-    step: state.currentStep,
-    step_name: getStepName(state.currentStep),
-    form_name: 'merchant_kyc_onboarding',
-    char_count: val.length,
-    // Note: actual values are NOT sent to Segment for PII compliance
-    // Only metadata is tracked
-  });
-
+  state.formData[fieldId] = el.value;
   updateSaveStatus();
 }
 
@@ -1542,10 +1584,13 @@ function selectRadio(fieldId, value, el) {
   el.classList.add('selected');
   state.formData[fieldId] = value;
 
-  analytics.track('Form Option Selected', {
+  // Fire specific named event from map, not a generic one
+  const eventName = FIELD_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Selected');
+  analytics.track(eventName, {
     field_id: fieldId,
     selected_value: value,
     form_name: 'merchant_kyc_onboarding',
+    step_number: state.currentStep + 1,
     step_name: getStepName(state.currentStep),
   });
 }
@@ -1568,11 +1613,20 @@ function showFilePreview(zoneId, fieldId, file) {
     preview.innerHTML = `<div class="upload-preview"><span>📎</span><span class="up-name">${file.name}</span><span class="up-size" style="color:var(--text-muted);font-size:0.75rem">${(file.size/1024).toFixed(1)} KB</span><button class="up-remove" onclick="removeFile('${zoneId}','${previewId}')">✕</button></div>`;
   }
 
-  analytics.track('Document Uploaded', {
+  const DOC_EVENT_MAP = {
+    'certificate_of_incorporation': 'Certificate of Incorporation Uploaded',
+    'address_proof':                'Address Proof Uploaded',
+    'aadhaar_front':                'Aadhaar Front Uploaded',
+    'aadhaar_back':                 'Aadhaar Back Uploaded',
+    'cancelled_cheque':             'Cancelled Cheque Uploaded',
+  };
+  const docEventName = DOC_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Uploaded');
+  analytics.track(docEventName, {
     field_id: fieldId,
     form_name: 'merchant_kyc_onboarding',
     file_type: file.type,
     file_size_kb: Math.round(file.size / 1024),
+    step_number: state.currentStep + 1,
     step_name: getStepName(state.currentStep),
   });
 }
