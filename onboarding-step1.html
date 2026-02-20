@@ -1300,29 +1300,11 @@
      Twilio Segment Integration + App Logic
 ══════════════════════════════════════════════ -->
 <script>
-/* ────────────────────────────────────────────
-   Twilio Segment Snippet (analytics.js v1.1)
-   Replace YOUR_WRITE_KEY with your actual key
-──────────────────────────────────────────── */
-!function(){
-  var analytics=window.analytics=window.analytics||[];
-  if(!analytics.initialize)if(analytics.invoked){
-    window.console&&console.error&&console.error("Segment snippet included twice.");
-  } else {
-    analytics.invoked=!0;
-    analytics.methods=["trackSubmit","trackClick","trackLink","trackForm","pageview","identify","reset","group","track","ready","alias","debug","page","once","off","on","addSourceMiddleware","addIntegrationMiddleware","setAnonymousId","addDestinationMiddleware"];
-    analytics.factory=function(e){return function(){var t=Array.prototype.slice.call(arguments);t.unshift(e);analytics.push(t);return analytics}};
-    for(var e=0;e<analytics.methods.length;e++){var key=analytics.methods[e];analytics[key]=analytics.factory(key);}
-    analytics.load=function(key,e){var t=document.createElement("script");t.type="text/javascript";t.async=!0;t.src="https://cdn.segment.com/analytics.js/v1/" + key + "/analytics.min.js";var n=document.getElementsByTagName("script")[0];n.parentNode.insertBefore(t,n);analytics._loadOptions=e;};
-    analytics.SNIPPET_VERSION="4.15.3";
-    analytics.load("YOUR_WRITE_KEY"); // 🔑 Replace with your Segment Write Key
-    analytics.page("Merchant Onboarding", {
-      step: "Business Identity",
-      step_number: 1,
-      total_steps: 4
-    });
-  }
-}();
+/* ══════════════════════════════════════════════════════════════════
+   merchant-onboarding.js
+   Full Segment tracking for KYC onboarding page
+   Replace YOUR_WRITE_KEY in your HTML Segment snippet with your key
+══════════════════════════════════════════════════════════════════ */
 
 /* ────────────────────────────────────────────
    App State
@@ -1331,213 +1313,192 @@ const state = {
   currentStep: 0,
   completedSteps: new Set(),
   fieldFocusTimestamps: {},
+  fieldValueAtFocus: {},
   formData: {},
   directorCount: 1,
   selectedBank: null,
-  selectedBusinessType: null,
   panVerified: false,
   aadhaarOTPSent: false,
-  userEmail: null,   // populated from login session below
+  userEmail: null,
   userName: null,
+  _otpCompleteTracked: false,
 };
 
-// Fires once when the merchant onboarding page loads
-window.addEventListener('load', function() {
-    if (!pageTracked) {
-        pageTracked = true;
-        console.log('Step 1: Business Information page loaded');
-        
-        // Track page view event
-        if (window.analytics && typeof window.analytics.track === 'function') {
-            try {
-                analytics.track('Onboarding Step Viewed', {
-                    step: 1,
-                    step_name: 'Business Information',
-                    timestamp: new Date().toISOString()
-                });
-                console.log('✓ Step 1 page view tracked');
-            } catch (error) {
-                console.error('✗ Error tracking Step 1 page view:', error);
-            }
-        } else {
-            console.error('✗ Segment analytics not available');
-        }
-    }
-});
+/* ────────────────────────────────────────────
+   segTrack — Central wrapper
+   Auto-injects email + user_name into every
+   analytics.track() call so every event in
+   Segment Debugger shows who triggered it
+──────────────────────────────────────────── */
+function segTrack(eventName, properties) {
+  var props = properties || {};
+  var enriched = Object.assign({}, props, {
+    email:     state.userEmail || null,
+    user_name: state.userName  || null,
+    form_name: props.form_name || 'merchant_kyc_onboarding',
+  });
+  analytics.track(eventName, enriched);  // calls analytics.track, NOT segTrack — no recursion
+}
 
-/* ─────────────────────────────────────────────────────────────────
-   SESSION LINKING — Re-identify with login email on KYC page load
-   This merges the KYC session with the same profile created on login.
-   Pull email from wherever your login page stores it (localStorage is standard).
-   Change the key name below to match what your login page saves.
-───────────────────────────────────────────────────────────────── */
+/* ────────────────────────────────────────────
+   SESSION LINKING
+   Reads email saved by login page, re-identifies
+   so KYC session merges with login profile
+──────────────────────────────────────────── */
 analytics.ready(function() {
-  const sessionEmail = localStorage.getItem('user_email');   // ← match your login page key
-  const sessionName  = localStorage.getItem('user_name');    // ← optional
+  var sessionEmail = localStorage.getItem('user_email');
+  var sessionName  = localStorage.getItem('user_name');
 
   if (sessionEmail) {
     state.userEmail = sessionEmail;
     state.userName  = sessionName || null;
 
-    // Re-identify so this KYC session is stitched to the login profile
+    // Stitch this session to the login profile
     analytics.identify({
       email: sessionEmail,
-      ...(sessionName && { name: sessionName }),
-      kyc_form_started: true,
+      name:  sessionName  || undefined,
+      kyc_form_started:    true,
       kyc_form_started_at: new Date().toISOString(),
     });
 
-    // Show email in topbar so merchant knows they're logged in
-    const avatarEl = document.querySelector('.topbar-avatar');
+    // Update topbar avatar initials
+    var avatarEl = document.querySelector('.topbar-avatar');
     if (avatarEl && sessionName) {
-      avatarEl.textContent = sessionName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+      avatarEl.textContent = sessionName.split(' ').map(function(w){ return w[0]; }).join('').toUpperCase().slice(0,2);
     }
   } else {
-    // No session found — email will be empty in traits but tracking still works
-    console.warn('[Segment] No user_email in localStorage. KYC events will fire under anonymousId until identified.');
+    console.warn('[Segment] No user_email in localStorage. Events fire under anonymousId.');
   }
+
+  /* ── PAGE VIEW — inside analytics.ready() so Segment is guaranteed loaded ──
+     This is the reliable way. setTimeout outside ready() is a workaround;
+     this fires as soon as Segment finishes initialising.                      */
+  analytics.page('Merchant Onboarding', {
+    email:       state.userEmail || null,
+    user_name:   state.userName  || null,
+    step_number: 1,
+    step_name:   'Business Identity',
+    total_steps: 4,
+    timestamp:   new Date().toISOString(),
+  });
+
+  // Also fire a named track event so it shows up in TRACK list alongside page view
+  segTrack('Merchant Onboarding Started', {
+    step_number: 1,
+    step_name:   'Business Identity',
+    total_steps: 4,
+    timestamp:   new Date().toISOString(),
+  });
 });
 
-/* ─────────────────────────────────────────────────────────────────
-   segTrack() — CENTRAL TRACK WRAPPER
-   Replaces all direct segTrack() calls throughout this file.
-   Automatically injects email + user_name into EVERY event property
-   so you can see who triggered what directly in the Segment debugger,
-   without having to look up the profile separately.
-───────────────────────────────────────────────────────────────── */
-function segTrack(eventName, properties) {
-  const enriched = Object.assign({}, properties, {
-    // Always inject these — pulled from state (set on page load from localStorage)
-    email:     state.userEmail || null,
-    user_name: state.userName  || null,
-    // Always include form context
-    form_name: properties.form_name || 'merchant_kyc_onboarding',
-  });
-  segTrack(eventName, enriched);
-}
-
-/* ─────────────────────────────────────────────────────────────────
+/* ────────────────────────────────────────────
    FIELD EVENT MAP
-   Each field_id maps to a specific, human-readable Segment event name.
-   This means Segment Debugger will show exactly which field was filled —
-   e.g. "PAN Number Entered" instead of the generic "Form Field Updated".
-───────────────────────────────────────────────────────────────── */
-const FIELD_EVENT_MAP = {
+   field_id → specific Segment event name
+──────────────────────────────────────────── */
+var FIELD_EVENT_MAP = {
   // Step 1 — Business Identity
-  'pan_number':                       'PAN Number Entered',
-  'entity_name':                      'Entity Name Confirmed',
-  'business_type':                    'Business Type Selected',
-  'gst_number':                       'GST Number Entered',
-  'cin_number':                       'CIN Number Entered',
-  'registered_address':               'Registered Address Entered',
-  'city':                             'City Entered',
-  'state':                            'State Selected',
-  'pincode':                          'PIN Code Entered',
+  'pan_number':               'PAN Number Entered',
+  'entity_name':              'Entity Name Confirmed',
+  'business_type':            'Business Type Selected',
+  'gst_number':               'GST Number Entered',
+  'cin_number':               'CIN Number Entered',
+  'registered_address':       'Registered Address Entered',
+  'city':                     'City Entered',
+  'state':                    'State Selected',
+  'pincode':                  'PIN Code Entered',
 
   // Step 2 — Aadhaar
-  'aadhaar_full_name':                'Authorised Signatory Name Entered',
-  'aadhaar_dob':                      'Date of Birth Entered',
-  'aadhaar_number':                   'Aadhaar Number Entered',
-  'aadhaar_otp_digit_1':              'Aadhaar OTP Started',
-  'aadhaar_otp_digit_2':              'Aadhaar OTP Digit 2 Entered',
-  'aadhaar_otp_digit_3':              'Aadhaar OTP Digit 3 Entered',
-  'aadhaar_otp_digit_4':              'Aadhaar OTP Digit 4 Entered',
-  'aadhaar_otp_digit_5':              'Aadhaar OTP Digit 5 Entered',
-  'aadhaar_otp_digit_6':              'Aadhaar OTP Completed',
+  'aadhaar_full_name':        'Authorised Signatory Name Entered',
+  'aadhaar_dob':              'Date of Birth Entered',
+  'aadhaar_number':           'Aadhaar Number Entered',
 
   // Step 3 — Directors
-  'total_shareholders':               'Total Shareholders Entered',
-  'date_of_incorporation':            'Date of Incorporation Entered',
+  'total_shareholders':       'Total Shareholders Entered',
+  'date_of_incorporation':    'Date of Incorporation Entered',
 
   // Step 4 — Bank
-  'bank_account_holder_name':         'Bank Account Holder Name Entered',
-  'bank_account_type':                'Bank Account Type Selected',
-  'bank_account_number':              'Bank Account Number Entered',
-  'bank_account_number_confirm':      'Bank Account Number Confirmed',
-  'bank_ifsc_code':                   'Bank IFSC Code Entered',
+  'bank_account_holder_name': 'Bank Account Holder Name Entered',
+  'bank_account_type':        'Bank Account Type Selected',
+  'bank_account_number':      'Bank Account Number Entered',
+  'bank_account_number_confirm': 'Bank Account Number Confirmed',
+  'bank_ifsc_code':           'Bank IFSC Code Entered',
 };
 
-// Dynamically generate director field mappings (supports up to 10 directors)
-for (let d = 1; d <= 10; d++) {
-  FIELD_EVENT_MAP[`director_${d}_name`]           = `Director ${d} Name Entered`;
-  FIELD_EVENT_MAP[`director_${d}_designation`]    = `Director ${d} Designation Selected`;
-  FIELD_EVENT_MAP[`director_${d}_din`]            = `Director ${d} DIN Entered`;
-  FIELD_EVENT_MAP[`director_${d}_shareholding_pct`] = `Director ${d} Shareholding % Entered`;
-  FIELD_EVENT_MAP[`director_${d}_is_ubo`]         = `Director ${d} UBO Status Selected`;
-  FIELD_EVENT_MAP[`director_${d}_pan`]            = `Director ${d} PAN Entered`;
-  FIELD_EVENT_MAP[`director_${d}_aadhaar_last4`]  = `Director ${d} Aadhaar Last 4 Entered`;
+// Director fields — generated dynamically for up to 10 directors
+for (var d = 1; d <= 10; d++) {
+  FIELD_EVENT_MAP['director_' + d + '_name']            = 'Director ' + d + ' Name Entered';
+  FIELD_EVENT_MAP['director_' + d + '_designation']     = 'Director ' + d + ' Designation Selected';
+  FIELD_EVENT_MAP['director_' + d + '_din']             = 'Director ' + d + ' DIN Entered';
+  FIELD_EVENT_MAP['director_' + d + '_shareholding_pct']= 'Director ' + d + ' Shareholding % Entered';
+  FIELD_EVENT_MAP['director_' + d + '_is_ubo']          = 'Director ' + d + ' UBO Status Selected';
+  FIELD_EVENT_MAP['director_' + d + '_pan']             = 'Director ' + d + ' PAN Entered';
+  FIELD_EVENT_MAP['director_' + d + '_aadhaar_last4']   = 'Director ' + d + ' Aadhaar Last 4 Entered';
 }
 
-// Track focus start time + last-tracked value per field (for deduplication)
+/* ────────────────────────────────────────────
+   FIELD TRACKING — focus / blur / input
+──────────────────────────────────────────── */
 function onFieldFocus(fieldId, el) {
   state.fieldFocusTimestamps[fieldId] = Date.now();
-  // Store value at focus time so we can check if it changed on blur
-  state.fieldValueAtFocus = state.fieldValueAtFocus || {};
   state.fieldValueAtFocus[fieldId] = el.value || '';
   // No Segment event on focus — keeps debugger clean
 }
 
-// ✅ Named event fires on blur — only if field has a value AND value changed since focus
 function onFieldBlur(fieldId, el) {
-  const val = el.value || '';
-  if (!val.trim()) return; // Skip empty fields — no noise
+  var val = el.value || '';
+  if (!val.trim()) return;                              // skip empty
+  if (val === state.fieldValueAtFocus[fieldId]) return; // skip if unchanged
 
-  const valueAtFocus = (state.fieldValueAtFocus || {})[fieldId] || '';
-  if (val === valueAtFocus) return; // Value didn't change — skip duplicate
-
-  const focusedAt = state.fieldFocusTimestamps[fieldId];
-  const timeOnField = focusedAt ? Math.round((Date.now() - focusedAt) / 1000) : null;
-
-  const eventName = FIELD_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Entered');
+  var focusedAt    = state.fieldFocusTimestamps[fieldId];
+  var timeOnField  = focusedAt ? Math.round((Date.now() - focusedAt) / 1000) : null;
+  var eventName    = FIELD_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); }) + ' Entered');
 
   segTrack(eventName, {
-    field_id: fieldId,
-    step_number: state.currentStep + 1,
-    step_name: getStepName(state.currentStep),
-    form_name: 'merchant_kyc_onboarding',
-    char_count: val.length,
+    field_id:              fieldId,
+    step_number:           state.currentStep + 1,
+    step_name:             getStepName(state.currentStep),
+    char_count:            val.length,
     time_on_field_seconds: timeOnField,
   });
 }
 
-// onFieldInput: only updates state + autosave — NO Segment event fired here (prevents per-keystroke noise)
 function onFieldInput(fieldId, el) {
+  // State update + autosave only — NO Segment event per keystroke
   state.formData[fieldId] = el.value;
   updateSaveStatus();
 }
 
+/* ────────────────────────────────────────────
+   HELPERS
+──────────────────────────────────────────── */
 function getStepName(step) {
-  const names = ['Business Identity','Aadhaar Verification','Directors & UBOs','Bank Details'];
+  var names = ['Business Identity', 'Aadhaar Verification', 'Directors & UBOs', 'Bank Details'];
   return names[step] || 'Unknown';
 }
 
 function updateSaveStatus() {
-  const el = document.getElementById('topbar-save-status');
+  var el = document.getElementById('topbar-save-status');
+  if (!el) return;
   el.textContent = 'Auto-saving...';
   clearTimeout(window._saveTimeout);
-  window._saveTimeout = setTimeout(() => {
+  window._saveTimeout = setTimeout(function() {
     el.textContent = '✓ Draft saved';
-    setTimeout(() => { el.textContent = ''; }, 2000);
+    setTimeout(function() { el.textContent = ''; }, 2000);
   }, 800);
 }
 
 /* ────────────────────────────────────────────
-   Step Navigation
+   STEP NAVIGATION
 ──────────────────────────────────────────── */
-/* ─────────────────────────────────────────────────────────────────
-   STEP NAVIGATION — with full back/forward tracking + identify on every step
-───────────────────────────────────────────────────────────────── */
-
-// Core UI switcher (used by both forward and back navigation)
 function _switchStep(step) {
-  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
-  document.getElementById(`step-${step}`).classList.add('active');
+  document.querySelectorAll('.step-panel').forEach(function(p) { p.classList.remove('active'); });
+  document.getElementById('step-' + step).classList.add('active');
 
-  document.querySelectorAll('.step-nav-item').forEach((item, i) => {
+  document.querySelectorAll('.step-nav-item').forEach(function(item, i) {
     item.classList.remove('active', 'locked', 'done');
     if (state.completedSteps.has(i)) {
       item.classList.add('done');
-      const lock = item.querySelector('.sni-lock');
+      var lock = item.querySelector('.sni-lock');
       if (lock) lock.remove();
     } else if (i === step) {
       item.classList.add('active');
@@ -1546,250 +1507,211 @@ function _switchStep(step) {
     }
   });
 
-  document.querySelectorAll('.progress-step').forEach((ps, i) => {
-    const bar = ps.querySelector('.ps-bar');
+  document.querySelectorAll('.progress-step').forEach(function(ps, i) {
+    var bar = ps.querySelector('.ps-bar');
     ps.classList.remove('done', 'active');
     bar.classList.remove('done', 'active');
-    if (state.completedSteps.has(i)) { ps.classList.add('done'); bar.classList.add('done'); }
-    else if (i === step) { ps.classList.add('active'); bar.classList.add('active'); }
+    if (state.completedSteps.has(i))  { ps.classList.add('done');   bar.classList.add('done'); }
+    else if (i === step)              { ps.classList.add('active'); bar.classList.add('active'); }
   });
 
-  const pct = Math.round((state.completedSteps.size / 4) * 100);
-  document.getElementById('overall-pct').textContent = `${pct}% complete`;
+  var pct = Math.round((state.completedSteps.size / 4) * 100);
+  document.getElementById('overall-pct').textContent = pct + '% complete';
   state.currentStep = step;
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// Called when user clicks "← Back" buttons
 function goToStep(step) {
   if (step !== 0 && !state.completedSteps.has(step - 1) && !state.completedSteps.has(step)) return;
 
-  const prev = state.currentStep;
-  const isGoingBack = step < prev;
+  var prev        = state.currentStep;
+  var isGoingBack = step < prev;
 
   _switchStep(step);
 
   if (isGoingBack) {
-    // Named back-navigation event — visible clearly in Segment debugger
-    const backEventNames = [
+    var backNames = [
       null,
       'Went Back to Business Identity',
       'Went Back to Aadhaar Verification',
       'Went Back to Directors & UBOs',
       'Went Back to Bank Details',
     ];
-    const eventName = backEventNames[step + 1] || `Went Back to ${getStepName(step)}`;
-
-    segTrack(eventName, {
-      form_name: 'merchant_kyc_onboarding',
-      from_step_number: prev + 1,
-      from_step_name: getStepName(prev),
-      to_step_number: step + 1,
-      to_step_name: getStepName(step),
+    segTrack(backNames[step + 1] || ('Went Back to ' + getStepName(step)), {
+      from_step_number:       prev + 1,
+      from_step_name:         getStepName(prev),
+      to_step_number:         step + 1,
+      to_step_name:           getStepName(step),
       fields_collected_so_far: Object.keys(state.formData).length,
     });
   } else {
     segTrack('KYC Step Viewed', {
-      step_number: step + 1,
-      step_name: getStepName(step),
+      step_number:          step + 1,
+      step_name:            getStepName(step),
       previous_step_number: prev + 1,
-      previous_step_name: getStepName(prev),
-      form_name: 'merchant_kyc_onboarding',
+      previous_step_name:   getStepName(prev),
     });
   }
 
-  // Always call identify with whatever traits we have so far — keeps Profile Explorer up to date in real time
   _identifyCurrentTraits();
 }
 
-// Called when user clicks "Continue →" buttons
 function completeStep(step) {
   state.completedSteps.add(step);
 
-  const stepEventNames = [
+  var stepEvents = [
     'Business Identity Step Completed',
     'Aadhaar Verification Step Completed',
     'Directors & UBOs Step Completed',
     'Bank Details Step Completed',
   ];
-  segTrack(stepEventNames[step] || `Step ${step + 1} Completed`, {
-    form_name: 'merchant_kyc_onboarding',
-    step_number: step + 1,
-    step_name: getStepName(step),
+  segTrack(stepEvents[step] || ('Step ' + (step + 1) + ' Completed'), {
+    step_number:             step + 1,
+    step_name:               getStepName(step),
     fields_collected_so_far: Object.keys(state.formData).length,
-    completion_pct: Math.round(((step + 1) / 4) * 100),
+    completion_pct:          Math.round(((step + 1) / 4) * 100),
   });
 
-  // Identify with all collected traits so far — Profile Explorer updates progressively
   _identifyCurrentTraits();
-
   if (step < 3) goToStep(step + 1);
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   UNIFIED IDENTIFY — builds full trait object from all collected data
-   Called after every step completion, back navigation, and final submit
-   This is what populates Profile Explorer traits
-───────────────────────────────────────────────────────────────── */
+/* ────────────────────────────────────────────
+   UNIFIED IDENTIFY
+   Sends all collected traits to Profile Explorer
+   after every step complete / back navigation
+──────────────────────────────────────────── */
 function _identifyCurrentTraits() {
-  const fd = state.formData;
-
-  // Build traits object — maps form fields → clean Profile Explorer trait names
-  const traits = {
-    // ── Linked identity — always included so every trait update is tied to the user ──
-    ...(state.userEmail && { email: state.userEmail }),
-    ...(state.userName  && { name: state.userName }),
-
-    // ── Onboarding meta ──
-    kyc_form_started: true,
-    kyc_current_step: state.currentStep + 1,
-    kyc_current_step_name: getStepName(state.currentStep),
-    kyc_steps_completed: state.completedSteps.size,
-    kyc_completion_pct: Math.round((state.completedSteps.size / 4) * 100),
-    kyc_pan_verified: state.panVerified || false,
-    kyc_aadhaar_otp_sent: state.aadhaarOTPSent || false,
-    kyc_last_active_at: new Date().toISOString(),
-
-    // ── Step 1: Business Identity ──
-    ...(fd.pan_number         && { business_pan_number: fd.pan_number }),
-    ...(fd.entity_name        && { business_entity_name: fd.entity_name }),
-    ...(fd.business_type      && { business_type: fd.business_type }),
-    ...(fd.gst_number         && { business_gst_number: fd.gst_number }),
-    ...(fd.cin_number         && { business_cin_number: fd.cin_number }),
-    ...(fd.registered_address && { business_registered_address: fd.registered_address }),
-    ...(fd.city               && { business_city: fd.city }),
-    ...(fd.state              && { business_state: fd.state }),
-    ...(fd.pincode            && { business_pincode: fd.pincode }),
-
-    // ── Step 2: Aadhaar / Authorised Signatory ──
-    ...(fd.aadhaar_full_name  && { signatory_full_name: fd.aadhaar_full_name }),
-    ...(fd.aadhaar_dob        && { signatory_dob: fd.aadhaar_dob }),
-
-    // ── Step 3: Directors ──
-    ...(fd.total_shareholders    && { total_shareholders: fd.total_shareholders }),
-    ...(fd.date_of_incorporation && { date_of_incorporation: fd.date_of_incorporation }),
-    ...(fd.director_1_name       && { director_1_name: fd.director_1_name }),
-    ...(fd.director_1_designation && { director_1_designation: fd.director_1_designation }),
-    ...(fd.director_1_shareholding_pct && { director_1_shareholding_pct: fd.director_1_shareholding_pct }),
-    ...(fd.director_1_is_ubo    && { director_1_is_ubo: fd.director_1_is_ubo }),
-    ...(fd.director_2_name      && { director_2_name: fd.director_2_name }),
-    ...(fd.director_2_designation && { director_2_designation: fd.director_2_designation }),
-    ...(fd.director_2_shareholding_pct && { director_2_shareholding_pct: fd.director_2_shareholding_pct }),
-    ...(fd.director_2_is_ubo    && { director_2_is_ubo: fd.director_2_is_ubo }),
-
-    // ── Step 4: Bank Details ──
-    ...(state.selectedBank               && { bank_name: state.selectedBank }),
-    ...(fd.bank_account_holder_name      && { bank_account_holder_name: fd.bank_account_holder_name }),
-    ...(fd.bank_account_type             && { bank_account_type: fd.bank_account_type }),
-    ...(fd.bank_ifsc_code                && { bank_ifsc_code: fd.bank_ifsc_code }),
-  };
+  var fd = state.formData;
+  var traits = Object.assign(
+    {},
+    state.userEmail ? { email: state.userEmail } : {},
+    state.userName  ? { name:  state.userName  } : {},
+    {
+      kyc_form_started:      true,
+      kyc_current_step:      state.currentStep + 1,
+      kyc_current_step_name: getStepName(state.currentStep),
+      kyc_steps_completed:   state.completedSteps.size,
+      kyc_completion_pct:    Math.round((state.completedSteps.size / 4) * 100),
+      kyc_pan_verified:      state.panVerified   || false,
+      kyc_aadhaar_otp_sent:  state.aadhaarOTPSent || false,
+      kyc_last_active_at:    new Date().toISOString(),
+    },
+    fd.pan_number         ? { business_pan_number:          fd.pan_number         } : {},
+    fd.entity_name        ? { business_entity_name:         fd.entity_name        } : {},
+    fd.business_type      ? { business_type:                fd.business_type      } : {},
+    fd.gst_number         ? { business_gst_number:          fd.gst_number         } : {},
+    fd.cin_number         ? { business_cin_number:          fd.cin_number         } : {},
+    fd.registered_address ? { business_registered_address:  fd.registered_address } : {},
+    fd.city               ? { business_city:                fd.city               } : {},
+    fd.state              ? { business_state:               fd.state              } : {},
+    fd.pincode            ? { business_pincode:             fd.pincode            } : {},
+    fd.aadhaar_full_name  ? { signatory_full_name:          fd.aadhaar_full_name  } : {},
+    fd.aadhaar_dob        ? { signatory_dob:                fd.aadhaar_dob        } : {},
+    fd.total_shareholders ? { total_shareholders:           fd.total_shareholders } : {},
+    fd.date_of_incorporation ? { date_of_incorporation:     fd.date_of_incorporation } : {},
+    fd.director_1_name    ? { director_1_name:              fd.director_1_name    } : {},
+    fd.director_1_designation ? { director_1_designation:   fd.director_1_designation } : {},
+    fd.director_1_shareholding_pct ? { director_1_shareholding_pct: fd.director_1_shareholding_pct } : {},
+    fd.director_1_is_ubo  ? { director_1_is_ubo:            fd.director_1_is_ubo  } : {},
+    fd.director_2_name    ? { director_2_name:              fd.director_2_name    } : {},
+    fd.director_2_designation ? { director_2_designation:   fd.director_2_designation } : {},
+    fd.director_2_shareholding_pct ? { director_2_shareholding_pct: fd.director_2_shareholding_pct } : {},
+    fd.director_2_is_ubo  ? { director_2_is_ubo:            fd.director_2_is_ubo  } : {},
+    state.selectedBank    ? { bank_name:                    state.selectedBank    } : {},
+    fd.bank_account_holder_name ? { bank_account_holder_name: fd.bank_account_holder_name } : {},
+    fd.bank_account_type  ? { bank_account_type:            fd.bank_account_type  } : {},
+    fd.bank_ifsc_code     ? { bank_ifsc_code:               fd.bank_ifsc_code     } : {}
+  );
 
   analytics.identify(traits);
 }
 
 /* ────────────────────────────────────────────
-   PAN Verification
+   PAN VERIFICATION
 ──────────────────────────────────────────── */
 document.getElementById('pan-input').addEventListener('input', function() {
-  // Validation logic only — Segment event fires on blur via onFieldBlur
-  const valid = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(this.value.toUpperCase());
+  var valid = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(this.value.toUpperCase());
   document.getElementById('pan-verify-btn').disabled = !valid;
   this.value = this.value.toUpperCase();
-  if (valid) {
-    document.getElementById('pan-hint').textContent = 'PAN format looks good. Click Verify.';
-  }
+  if (valid) document.getElementById('pan-hint').textContent = 'PAN format looks good. Click Verify.';
   state.formData['pan_number'] = this.value;
   updateSaveStatus();
 });
 
-  // Fires once when the merchant onboarding page loads
-analytics.ready(function() {
-  segTrack('Merchant Onboarding Started', {
-    step_number: 1,
-    step_name: 'Business Identity',
-    total_steps: 4,
-    timestamp: new Date().toISOString(),
-  });
-});
 function verifyPAN() {
-  const pan = document.getElementById('pan-input').value;
-  const btn = document.getElementById('pan-verify-btn');
+  var pan = document.getElementById('pan-input').value;
+  var btn = document.getElementById('pan-verify-btn');
   btn.innerHTML = '<span class="spinner"></span>';
-  btn.disabled = true;
+  btn.disabled  = true;
 
   segTrack('PAN Verification Initiated', {
     field_id: 'pan_number',
-    form_name: 'merchant_kyc_onboarding',
     pan_type: pan[3] === 'P' ? 'individual' : 'company',
   });
 
-  // Simulate API call
-  setTimeout(() => {
+  setTimeout(function() {
     state.panVerified = true;
     document.getElementById('pan-input').classList.add('success');
     document.getElementById('entity-name').value = 'ACME TECHNOLOGIES PRIVATE LIMITED';
     document.getElementById('entity-name').classList.add('success');
     document.getElementById('entity-status').innerHTML = '<span style="color:var(--success)">✓ Verified</span>';
-    document.getElementById('pan-hint').textContent = '✓ PAN verified successfully';
-    document.getElementById('pan-hint').style.color = 'var(--success)';
-    btn.textContent = '✓ Verified';
+    document.getElementById('pan-hint').textContent    = '✓ PAN verified successfully';
+    document.getElementById('pan-hint').style.color    = 'var(--success)';
+    btn.textContent    = '✓ Verified';
     btn.style.background = 'var(--success)';
-    btn.disabled = true;
+    btn.disabled       = true;
 
     segTrack('PAN Verification Completed', {
-      field_id: 'pan_number',
-      form_name: 'merchant_kyc_onboarding',
+      field_id:            'pan_number',
       verification_status: 'success',
-      pan_type: pan[3] === 'P' ? 'individual' : 'company',
+      pan_type:            pan[3] === 'P' ? 'individual' : 'company',
     });
   }, 1800);
 }
 
 /* ────────────────────────────────────────────
-   GST Validation
+   GST VALIDATION
 ──────────────────────────────────────────── */
 document.getElementById('gst-input').addEventListener('input', function() {
-  // Validation UI only — named Segment events fire once on blur via onFieldBlur
   this.value = this.value.toUpperCase();
-  const valid = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(this.value);
-  const status = document.getElementById('gst-status');
-  const hint = document.getElementById('gst-hint');
+  var valid  = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(this.value);
+  var status = document.getElementById('gst-status');
+  var hint   = document.getElementById('gst-hint');
+
   if (this.value.length === 15) {
     if (valid) {
       this.classList.remove('error'); this.classList.add('success');
-      status.innerHTML = '<span style="color:var(--success)">✓</span>';
-      hint.textContent = '✓ Valid GST format';
-      hint.style.color = 'var(--success)';
-      // Fire once only — guard with a flag
+      status.innerHTML  = '<span style="color:var(--success)">✓</span>';
+      hint.textContent  = '✓ Valid GST format';
+      hint.style.color  = 'var(--success)';
       if (!this._gstValidTracked) {
         this._gstValidTracked = true;
         segTrack('GST Number Validated', {
-          field_id: 'gst_number',
+          field_id:         'gst_number',
           validation_result: 'valid',
-          form_name: 'merchant_kyc_onboarding',
-          step_number: state.currentStep + 1,
-          step_name: getStepName(state.currentStep),
+          step_number:      state.currentStep + 1,
+          step_name:        getStepName(state.currentStep),
         });
       }
     } else {
       this.classList.remove('success'); this.classList.add('error');
       this._gstValidTracked = false;
-      status.innerHTML = '<span style="color:var(--error)">✗</span>';
-      hint.textContent = 'Invalid GST format. Check and re-enter.';
-      hint.style.color = 'var(--error)';
+      status.innerHTML  = '<span style="color:var(--error)">✗</span>';
+      hint.textContent  = 'Invalid GST format. Check and re-enter.';
+      hint.style.color  = 'var(--error)';
       if (!this._gstInvalidTracked) {
         this._gstInvalidTracked = true;
         segTrack('GST Number Validation Failed', {
-          field_id: 'gst_number',
+          field_id:          'gst_number',
           validation_result: 'invalid',
-          form_name: 'merchant_kyc_onboarding',
-          step_number: state.currentStep + 1,
+          step_number:       state.currentStep + 1,
         });
       }
     }
   } else {
-    this.classList.remove('error','success');
-    this._gstValidTracked = false;
+    this.classList.remove('error', 'success');
+    this._gstValidTracked   = false;
     this._gstInvalidTracked = false;
     status.innerHTML = '';
     hint.textContent = '15-character GST identification number';
@@ -1800,63 +1722,61 @@ document.getElementById('gst-input').addEventListener('input', function() {
 });
 
 /* ────────────────────────────────────────────
-   Radio Selection
+   RADIO SELECTION
 ──────────────────────────────────────────── */
 function selectRadio(fieldId, value, el) {
-  el.closest('.radio-group').querySelectorAll('.radio-option').forEach(r => r.classList.remove('selected'));
+  el.closest('.radio-group').querySelectorAll('.radio-option').forEach(function(r) { r.classList.remove('selected'); });
   el.classList.add('selected');
   state.formData[fieldId] = value;
 
-  // Fire specific named event from map, not a generic one
-  const eventName = FIELD_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Selected');
+  var eventName = FIELD_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); }) + ' Selected');
   segTrack(eventName, {
-    field_id: fieldId,
+    field_id:       fieldId,
     selected_value: value,
-    form_name: 'merchant_kyc_onboarding',
-    step_number: state.currentStep + 1,
-    step_name: getStepName(state.currentStep),
+    step_number:    state.currentStep + 1,
+    step_name:      getStepName(state.currentStep),
   });
 }
 
 /* ────────────────────────────────────────────
-   File Upload
+   FILE UPLOAD
 ──────────────────────────────────────────── */
+var DOC_EVENT_MAP = {
+  'certificate_of_incorporation': 'Certificate of Incorporation Uploaded',
+  'address_proof':                'Address Proof Uploaded',
+  'aadhaar_front':                'Aadhaar Front Uploaded',
+  'aadhaar_back':                 'Aadhaar Back Uploaded',
+  'cancelled_cheque':             'Cancelled Cheque Uploaded',
+};
+
 function fileSelected(input, zoneId, fieldId) {
-  const file = input.files[0];
+  var file = input.files[0];
   if (!file) return;
   showFilePreview(zoneId, fieldId, file);
 }
 
 function showFilePreview(zoneId, fieldId, file) {
   document.getElementById(zoneId).style.display = 'none';
-  const previewId = zoneId.replace('-zone', '-preview');
-  const preview = document.getElementById(previewId);
+  var previewId = zoneId.replace('-zone', '-preview');
+  var preview   = document.getElementById(previewId);
   if (preview) {
     preview.style.display = 'flex';
-    preview.innerHTML = `<div class="upload-preview"><span>📎</span><span class="up-name">${file.name}</span><span class="up-size" style="color:var(--text-muted);font-size:0.75rem">${(file.size/1024).toFixed(1)} KB</span><button class="up-remove" onclick="removeFile('${zoneId}','${previewId}')">✕</button></div>`;
+    preview.innerHTML = '<div class="upload-preview"><span>📎</span><span class="up-name">' + file.name + '</span><span class="up-size" style="color:var(--text-muted);font-size:0.75rem">' + (file.size/1024).toFixed(1) + ' KB</span><button class="up-remove" onclick="removeFile(\'' + zoneId + '\',\'' + previewId + '\')">✕</button></div>';
   }
 
-  const DOC_EVENT_MAP = {
-    'certificate_of_incorporation': 'Certificate of Incorporation Uploaded',
-    'address_proof':                'Address Proof Uploaded',
-    'aadhaar_front':                'Aadhaar Front Uploaded',
-    'aadhaar_back':                 'Aadhaar Back Uploaded',
-    'cancelled_cheque':             'Cancelled Cheque Uploaded',
-  };
-  const docEventName = DOC_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Uploaded');
+  var docEventName = DOC_EVENT_MAP[fieldId] || (fieldId.replace(/_/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); }) + ' Uploaded');
   segTrack(docEventName, {
-    field_id: fieldId,
-    form_name: 'merchant_kyc_onboarding',
-    file_type: file.type,
+    field_id:     fieldId,
+    file_type:    file.type,
     file_size_kb: Math.round(file.size / 1024),
-    step_number: state.currentStep + 1,
-    step_name: getStepName(state.currentStep),
+    step_number:  state.currentStep + 1,
+    step_name:    getStepName(state.currentStep),
   });
 }
 
 function removeFile(zoneId, previewId) {
   document.getElementById(zoneId).style.display = 'block';
-  const el = document.getElementById(previewId);
+  var el = document.getElementById(previewId);
   if (el) { el.style.display = 'none'; el.innerHTML = ''; }
 }
 
@@ -1870,66 +1790,57 @@ function dragLeave(zoneId) {
 function dropFile(event, zoneId, fieldId) {
   event.preventDefault();
   dragLeave(zoneId);
-  const file = event.dataTransfer.files[0];
+  var file = event.dataTransfer.files[0];
   if (file) showFilePreview(zoneId, fieldId, file);
 }
 
 /* ────────────────────────────────────────────
-   Aadhaar OTP
+   AADHAAR OTP
 ──────────────────────────────────────────── */
 function formatAadhaar(el) {
-  let val = el.value.replace(/\D/g, '').substring(0, 12);
+  var val = el.value.replace(/\D/g, '').substring(0, 12);
   val = val.replace(/(\d{4})(?=\d)/g, '$1 ');
   el.value = val;
-  document.getElementById('aadhaar-otp-btn').disabled = val.replace(/\s/g,'').length !== 12;
+  document.getElementById('aadhaar-otp-btn').disabled = val.replace(/\s/g, '').length !== 12;
 }
 
 function sendAadhaarOTP() {
-  const btn = document.getElementById('aadhaar-otp-btn');
+  var btn = document.getElementById('aadhaar-otp-btn');
   btn.innerHTML = '<span class="spinner"></span>';
-  btn.disabled = true;
+  btn.disabled  = true;
 
-  segTrack('Aadhaar OTP Requested', {
-    field_id: 'aadhaar_number',
-    form_name: 'merchant_kyc_onboarding',
-  });
+  segTrack('Aadhaar OTP Requested', { field_id: 'aadhaar_number' });
 
-  setTimeout(() => {
+  setTimeout(function() {
     state.aadhaarOTPSent = true;
     document.getElementById('otp-section').style.display = 'block';
-    document.getElementById('aadhaar-hint').textContent = '✓ OTP sent to Aadhaar-linked mobile';
-    document.getElementById('aadhaar-hint').style.color = 'var(--success)';
-    btn.textContent = 'Resend OTP';
-    btn.disabled = false;
+    document.getElementById('aadhaar-hint').textContent  = '✓ OTP sent to Aadhaar-linked mobile';
+    document.getElementById('aadhaar-hint').style.color  = 'var(--success)';
+    btn.textContent    = 'Resend OTP';
+    btn.disabled       = false;
     btn.style.background = 'var(--success)';
-    // Focus first OTP input
     document.querySelector('.otp-input').focus();
 
-    segTrack('Aadhaar OTP Sent', {
-      form_name: 'merchant_kyc_onboarding',
-    });
+    segTrack('Aadhaar OTP Sent', {});
   }, 1500);
 }
 
 function otpMove(el, index) {
   el.value = el.value.replace(/\D/g, '');
   if (el.value && index < 5) {
-    const inputs = document.querySelectorAll('.otp-input');
-    inputs[index + 1].focus();
+    document.querySelectorAll('.otp-input')[index + 1].focus();
   }
-  // Fire ONE single event only when all 6 digits are filled — guarded with flag
-  const allInputs = document.querySelectorAll('.otp-input');
-  const otp = Array.from(allInputs).map(i => i.value).join('');
+  var allInputs = document.querySelectorAll('.otp-input');
+  var otp = Array.from(allInputs).map(function(i) { return i.value; }).join('');
   if (otp.length === 6 && !state._otpCompleteTracked) {
     state._otpCompleteTracked = true;
     segTrack('Aadhaar OTP Completed', {
-      field_id: 'aadhaar_otp',
-      form_name: 'merchant_kyc_onboarding',
+      field_id:    'aadhaar_otp',
       step_number: state.currentStep + 1,
-      step_name: getStepName(state.currentStep),
+      step_name:   getStepName(state.currentStep),
     });
   }
-  if (otp.length < 6) state._otpCompleteTracked = false; // Reset if digits removed
+  if (otp.length < 6) state._otpCompleteTracked = false;
 }
 
 function otpBack(event, index) {
@@ -1939,142 +1850,138 @@ function otpBack(event, index) {
 }
 
 /* ────────────────────────────────────────────
-   Directors
+   DIRECTORS
 ──────────────────────────────────────────── */
-let directorIndex = 0;
+var directorIndex = 0;
 
-function addDirector(isFirst = false) {
-  const i = ++directorIndex;
-  const list = document.getElementById('director-list');
-  const card = document.createElement('div');
+function addDirector() {
+  var i    = ++directorIndex;
+  var list = document.getElementById('director-list');
+  var card = document.createElement('div');
   card.className = 'director-card';
-  card.id = `director-card-${i}`;
-  card.innerHTML = `
-    <div class="director-card-header" onclick="toggleDirector(${i})">
-      <div class="dch-left">
-        <div class="dch-num">${i}</div>
-        <div class="dch-title" id="dir-title-${i}">Director / UBO ${i}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;">
-        ${i > 1 ? `<button class="remove-director" onclick="removeDirector(event,${i})">Remove</button>` : ''}
-        <span class="dch-toggle open" id="dch-toggle-${i}">▲</span>
-      </div>
-    </div>
-    <div class="director-card-body open" id="dir-body-${i}">
-      <div class="form-row cols-2">
-        <div class="field-group">
-          <label class="field-label">Full Name <span class="required">*</span></label>
-          <input type="text" class="field-input" placeholder="Full legal name"
-            oninput="onFieldInput('director_${i}_name', this); document.getElementById('dir-title-${i}').textContent = this.value || 'Director / UBO ${i}'"
-            onfocus="onFieldFocus('director_${i}_name', this)"
-            onblur="onFieldBlur('director_${i}_name', this)">
-        </div>
-        <div class="field-group">
-          <label class="field-label">Designation <span class="required">*</span></label>
-          <select class="field-select"
-            onchange="onFieldInput('director_${i}_designation', this)"
-            onfocus="onFieldFocus('director_${i}_designation', this)"
-            onblur="onFieldBlur('director_${i}_designation', this)">
-            <option value="">Select role</option>
-            <option>Managing Director</option>
-            <option>Director</option>
-            <option>Whole Time Director</option>
-            <option>UBO</option>
-            <option>Authorized Signatory</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-row cols-3">
-        <div class="field-group">
-          <label class="field-label">DIN / DPIN</label>
-          <input type="text" class="field-input" placeholder="00000000" maxlength="8"
-            oninput="onFieldInput('director_${i}_din', this)"
-            onfocus="onFieldFocus('director_${i}_din', this)"
-            onblur="onFieldBlur('director_${i}_din', this)">
-        </div>
-        <div class="field-group">
-          <label class="field-label">Shareholding % <span class="required">*</span></label>
-          <input type="number" class="field-input" placeholder="e.g. 25" min="0" max="100"
-            oninput="onFieldInput('director_${i}_shareholding_pct', this)"
-            onfocus="onFieldFocus('director_${i}_shareholding_pct', this)"
-            onblur="onFieldBlur('director_${i}_shareholding_pct', this)">
-        </div>
-        <div class="field-group">
-          <label class="field-label">Is UBO? (≥25%)</label>
-          <div class="radio-group inline">
-            <label class="radio-option" onclick="selectRadio('director_${i}_is_ubo', 'yes', this)">
-              <input type="radio" name="ubo_${i}" value="yes"><span class="ro-dot"></span><span class="ro-label">Yes</span>
-            </label>
-            <label class="radio-option" onclick="selectRadio('director_${i}_is_ubo', 'no', this)">
-              <input type="radio" name="ubo_${i}" value="no"><span class="ro-dot"></span><span class="ro-label">No</span>
-            </label>
-          </div>
-        </div>
-      </div>
-      <div class="form-row cols-2">
-        <div class="field-group">
-          <label class="field-label">PAN Number <span class="required">*</span></label>
-          <input type="text" class="field-input" placeholder="ABCDE1234F" maxlength="10"
-            oninput="onFieldInput('director_${i}_pan', this)"
-            onfocus="onFieldFocus('director_${i}_pan', this)"
-            onblur="onFieldBlur('director_${i}_pan', this)"
-            style="text-transform:uppercase;letter-spacing:0.06em;">
-        </div>
-        <div class="field-group">
-          <label class="field-label">Aadhaar (last 4 digits)</label>
-          <input type="text" class="field-input" placeholder="XXXX" maxlength="4"
-            oninput="onFieldInput('director_${i}_aadhaar_last4', this)"
-            onfocus="onFieldFocus('director_${i}_aadhaar_last4', this)"
-            onblur="onFieldBlur('director_${i}_aadhaar_last4', this)">
-        </div>
-      </div>
-    </div>`;
+  card.id        = 'director-card-' + i;
+  card.innerHTML =
+    '<div class="director-card-header" onclick="toggleDirector(' + i + ')">' +
+      '<div class="dch-left">' +
+        '<div class="dch-num">' + i + '</div>' +
+        '<div class="dch-title" id="dir-title-' + i + '">Director / UBO ' + i + '</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:10px;">' +
+        (i > 1 ? '<button class="remove-director" onclick="removeDirector(event,' + i + ')">Remove</button>' : '') +
+        '<span class="dch-toggle open" id="dch-toggle-' + i + '">▲</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="director-card-body open" id="dir-body-' + i + '">' +
+      '<div class="form-row cols-2">' +
+        '<div class="field-group">' +
+          '<label class="field-label">Full Name <span class="required">*</span></label>' +
+          '<input type="text" class="field-input" placeholder="Full legal name"' +
+          ' oninput="onFieldInput(\'director_' + i + '_name\', this); document.getElementById(\'dir-title-' + i + '\').textContent = this.value || \'Director / UBO ' + i + '\'"' +
+          ' onfocus="onFieldFocus(\'director_' + i + '_name\', this)"' +
+          ' onblur="onFieldBlur(\'director_' + i + '_name\', this)">' +
+        '</div>' +
+        '<div class="field-group">' +
+          '<label class="field-label">Designation <span class="required">*</span></label>' +
+          '<select class="field-select"' +
+          ' onchange="onFieldInput(\'director_' + i + '_designation\', this)"' +
+          ' onfocus="onFieldFocus(\'director_' + i + '_designation\', this)"' +
+          ' onblur="onFieldBlur(\'director_' + i + '_designation\', this)">' +
+            '<option value="">Select role</option>' +
+            '<option>Managing Director</option>' +
+            '<option>Director</option>' +
+            '<option>Whole Time Director</option>' +
+            '<option>UBO</option>' +
+            '<option>Authorized Signatory</option>' +
+          '</select>' +
+        '</div>' +
+      '</div>' +
+      '<div class="form-row cols-3">' +
+        '<div class="field-group">' +
+          '<label class="field-label">DIN / DPIN</label>' +
+          '<input type="text" class="field-input" placeholder="00000000" maxlength="8"' +
+          ' oninput="onFieldInput(\'director_' + i + '_din\', this)"' +
+          ' onfocus="onFieldFocus(\'director_' + i + '_din\', this)"' +
+          ' onblur="onFieldBlur(\'director_' + i + '_din\', this)">' +
+        '</div>' +
+        '<div class="field-group">' +
+          '<label class="field-label">Shareholding % <span class="required">*</span></label>' +
+          '<input type="number" class="field-input" placeholder="e.g. 25" min="0" max="100"' +
+          ' oninput="onFieldInput(\'director_' + i + '_shareholding_pct\', this)"' +
+          ' onfocus="onFieldFocus(\'director_' + i + '_shareholding_pct\', this)"' +
+          ' onblur="onFieldBlur(\'director_' + i + '_shareholding_pct\', this)">' +
+        '</div>' +
+        '<div class="field-group">' +
+          '<label class="field-label">Is UBO? (≥25%)</label>' +
+          '<div class="radio-group inline">' +
+            '<label class="radio-option" onclick="selectRadio(\'director_' + i + '_is_ubo\', \'yes\', this)">' +
+              '<input type="radio" name="ubo_' + i + '" value="yes"><span class="ro-dot"></span><span class="ro-label">Yes</span>' +
+            '</label>' +
+            '<label class="radio-option" onclick="selectRadio(\'director_' + i + '_is_ubo\', \'no\', this)">' +
+              '<input type="radio" name="ubo_' + i + '" value="no"><span class="ro-dot"></span><span class="ro-label">No</span>' +
+            '</label>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="form-row cols-2">' +
+        '<div class="field-group">' +
+          '<label class="field-label">PAN Number <span class="required">*</span></label>' +
+          '<input type="text" class="field-input" placeholder="ABCDE1234F" maxlength="10"' +
+          ' oninput="onFieldInput(\'director_' + i + '_pan\', this)"' +
+          ' onfocus="onFieldFocus(\'director_' + i + '_pan\', this)"' +
+          ' onblur="onFieldBlur(\'director_' + i + '_pan\', this)"' +
+          ' style="text-transform:uppercase;letter-spacing:0.06em;">' +
+        '</div>' +
+        '<div class="field-group">' +
+          '<label class="field-label">Aadhaar (last 4 digits)</label>' +
+          '<input type="text" class="field-input" placeholder="XXXX" maxlength="4"' +
+          ' oninput="onFieldInput(\'director_' + i + '_aadhaar_last4\', this)"' +
+          ' onfocus="onFieldFocus(\'director_' + i + '_aadhaar_last4\', this)"' +
+          ' onblur="onFieldBlur(\'director_' + i + '_aadhaar_last4\', this)">' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
   list.appendChild(card);
 
   segTrack('Director Added', {
     director_index: i,
-    form_name: 'merchant_kyc_onboarding',
     total_directors: i,
   });
 }
 
 function toggleDirector(i) {
-  const body = document.getElementById(`dir-body-${i}`);
-  const toggle = document.getElementById(`dch-toggle-${i}`);
-  const open = body.classList.toggle('open');
+  var body   = document.getElementById('dir-body-' + i);
+  var toggle = document.getElementById('dch-toggle-' + i);
+  var open   = body.classList.toggle('open');
   toggle.classList.toggle('open', open);
   toggle.textContent = open ? '▲' : '▼';
 }
 
 function removeDirector(event, i) {
   event.stopPropagation();
-  document.getElementById(`director-card-${i}`).remove();
-  segTrack('Director Removed', {
-    director_index: i,
-    form_name: 'merchant_kyc_onboarding',
-  });
+  document.getElementById('director-card-' + i).remove();
+  segTrack('Director Removed', { director_index: i });
 }
 
-// Initialize with 1 director
-addDirector(true);
+// Init first director on page load
+addDirector();
 
 /* ────────────────────────────────────────────
-   Bank Selection
+   BANK SELECTION
 ──────────────────────────────────────────── */
 function selectBank(bankId, el) {
-  document.querySelectorAll('.bank-logo').forEach(b => b.classList.remove('selected'));
+  document.querySelectorAll('.bank-logo').forEach(function(b) { b.classList.remove('selected'); });
   el.classList.add('selected');
   state.selectedBank = bankId;
 
   segTrack('Bank Selected', {
-    field_id: 'bank_name',
+    field_id:      'bank_name',
     selected_bank: bankId,
-    form_name: 'merchant_kyc_onboarding',
   });
 }
 
 /* ────────────────────────────────────────────
-   IFSC Lookup
+   IFSC LOOKUP
 ──────────────────────────────────────────── */
 function onIFSCInput(el) {
   el.value = el.value.toUpperCase();
@@ -2083,114 +1990,98 @@ function onIFSCInput(el) {
 }
 
 function verifyIFSC() {
-  const code = document.getElementById('ifsc-input').value;
-  const btn = document.getElementById('ifsc-verify-btn');
+  var btn = document.getElementById('ifsc-verify-btn');
   btn.innerHTML = '<span class="spinner"></span>';
-  btn.disabled = true;
+  btn.disabled  = true;
 
-  segTrack('IFSC Lookup Initiated', {
-    field_id: 'bank_ifsc_code',
-    form_name: 'merchant_kyc_onboarding',
-  });
+  segTrack('IFSC Lookup Initiated', { field_id: 'bank_ifsc_code' });
 
-  setTimeout(() => {
-    document.getElementById('branch-name').value = 'Mumbai - Andheri East';
+  setTimeout(function() {
+    document.getElementById('branch-name').value         = 'Mumbai - Andheri East';
     document.getElementById('ifsc-input').classList.add('success');
-    document.getElementById('ifsc-hint').textContent = '✓ IFSC valid — HDFC Bank, Mumbai - Andheri East';
-    document.getElementById('ifsc-hint').style.color = 'var(--success)';
-    btn.textContent = '✓ Valid';
+    document.getElementById('ifsc-hint').textContent     = '✓ IFSC valid — HDFC Bank, Mumbai - Andheri East';
+    document.getElementById('ifsc-hint').style.color     = 'var(--success)';
+    btn.textContent    = '✓ Valid';
     btn.style.background = 'var(--success)';
 
     segTrack('IFSC Lookup Completed', {
-      field_id: 'bank_ifsc_code',
-      form_name: 'merchant_kyc_onboarding',
+      field_id:            'bank_ifsc_code',
       verification_status: 'success',
-      bank_name: 'HDFC Bank',
+      bank_name:           'HDFC Bank',
     });
   }, 1200);
 }
 
-
 /* ────────────────────────────────────────────
-   Final Submission
+   FINAL SUBMISSION
 ──────────────────────────────────────────── */
 function submitKYC() {
-  const btn = event.target;
+  var btn   = event.target;
   btn.innerHTML = '<span class="spinner dark"></span> Submitting...';
-  btn.disabled = true;
+  btn.disabled  = true;
 
-  const refId = 'MRC-2026-' + String(Math.floor(Math.random() * 90000) + 10000);
+  var refId = 'MRC-2026-' + String(Math.floor(Math.random() * 90000) + 10000);
   state.referenceId = refId;
 
-  // ── Final named track event ──
   segTrack('KYC Application Submitted', {
-    form_name: 'merchant_kyc_onboarding',
-    reference_id: refId,
-    total_steps_completed: state.completedSteps.size,
-    pan_verified: state.panVerified,
-    aadhaar_otp_sent: state.aadhaarOTPSent,
-    bank_selected: state.selectedBank,
-    business_type: state.formData['business_type'] || null,
-    submission_timestamp: new Date().toISOString(),
+    reference_id:           refId,
+    total_steps_completed:  state.completedSteps.size,
+    pan_verified:           state.panVerified,
+    aadhaar_otp_sent:       state.aadhaarOTPSent,
+    bank_selected:          state.selectedBank,
+    business_type:          state.formData['business_type'] || null,
+    submission_timestamp:   new Date().toISOString(),
   });
 
-  // ── Full unified identify — ALL collected traits land in Profile Explorer ──
-  const fd = state.formData;
-  analytics.identify({
-    // ── Linked identity ──
-    ...(state.userEmail && { email: state.userEmail }),
-    ...(state.userName  && { name: state.userName }),
+  // Final full identify — all traits land in Profile Explorer
+  var fd = state.formData;
+  analytics.identify(Object.assign(
+    {},
+    state.userEmail ? { email: state.userEmail } : {},
+    state.userName  ? { name:  state.userName  } : {},
+    {
+      kyc_submitted:        true,
+      kyc_reference_id:     refId,
+      kyc_submission_date:  new Date().toISOString(),
+      kyc_completion_pct:   100,
+      kyc_steps_completed:  4,
+      kyc_pan_verified:     state.panVerified    || false,
+      kyc_aadhaar_otp_sent: state.aadhaarOTPSent || false,
+    },
+    fd.pan_number         ? { business_pan_number:         fd.pan_number         } : {},
+    fd.entity_name        ? { business_entity_name:        fd.entity_name        } : {},
+    fd.business_type      ? { business_type:               fd.business_type      } : {},
+    fd.gst_number         ? { business_gst_number:         fd.gst_number         } : {},
+    fd.cin_number         ? { business_cin_number:         fd.cin_number         } : {},
+    fd.registered_address ? { business_registered_address: fd.registered_address } : {},
+    fd.city               ? { business_city:               fd.city               } : {},
+    fd.state              ? { business_state:              fd.state              } : {},
+    fd.pincode            ? { business_pincode:            fd.pincode            } : {},
+    fd.aadhaar_full_name  ? { signatory_full_name:         fd.aadhaar_full_name  } : {},
+    fd.aadhaar_dob        ? { signatory_dob:               fd.aadhaar_dob        } : {},
+    fd.total_shareholders ? { total_shareholders:          fd.total_shareholders } : {},
+    fd.date_of_incorporation ? { date_of_incorporation:    fd.date_of_incorporation } : {},
+    fd.director_1_name    ? { director_1_name:             fd.director_1_name    } : {},
+    fd.director_1_designation ? { director_1_designation:  fd.director_1_designation } : {},
+    fd.director_1_shareholding_pct ? { director_1_shareholding_pct: fd.director_1_shareholding_pct } : {},
+    fd.director_1_is_ubo  ? { director_1_is_ubo:           fd.director_1_is_ubo  } : {},
+    fd.director_2_name    ? { director_2_name:             fd.director_2_name    } : {},
+    fd.director_2_designation ? { director_2_designation:  fd.director_2_designation } : {},
+    fd.director_2_shareholding_pct ? { director_2_shareholding_pct: fd.director_2_shareholding_pct } : {},
+    fd.director_2_is_ubo  ? { director_2_is_ubo:           fd.director_2_is_ubo  } : {},
+    state.selectedBank    ? { bank_name:                   state.selectedBank    } : {},
+    fd.bank_account_holder_name ? { bank_account_holder_name: fd.bank_account_holder_name } : {},
+    fd.bank_account_type  ? { bank_account_type:           fd.bank_account_type  } : {},
+    fd.bank_ifsc_code     ? { bank_ifsc_code:              fd.bank_ifsc_code     } : {}
+  ));
 
-    // Onboarding status
-    kyc_submitted: true,
-    kyc_reference_id: refId,
-    kyc_submission_date: new Date().toISOString(),
-    kyc_completion_pct: 100,
-    kyc_steps_completed: 4,
-    kyc_pan_verified: state.panVerified || false,
-    kyc_aadhaar_otp_sent: state.aadhaarOTPSent || false,
-
-    // Business Identity
-    ...(fd.pan_number         && { business_pan_number: fd.pan_number }),
-    ...(fd.entity_name        && { business_entity_name: fd.entity_name }),
-    ...(fd.business_type      && { business_type: fd.business_type }),
-    ...(fd.gst_number         && { business_gst_number: fd.gst_number }),
-    ...(fd.cin_number         && { business_cin_number: fd.cin_number }),
-    ...(fd.registered_address && { business_registered_address: fd.registered_address }),
-    ...(fd.city               && { business_city: fd.city }),
-    ...(fd.state              && { business_state: fd.state }),
-    ...(fd.pincode            && { business_pincode: fd.pincode }),
-
-    // Signatory
-    ...(fd.aadhaar_full_name  && { signatory_full_name: fd.aadhaar_full_name }),
-    ...(fd.aadhaar_dob        && { signatory_dob: fd.aadhaar_dob }),
-
-    // Directors
-    ...(fd.total_shareholders    && { total_shareholders: fd.total_shareholders }),
-    ...(fd.date_of_incorporation && { date_of_incorporation: fd.date_of_incorporation }),
-    ...(fd.director_1_name       && { director_1_name: fd.director_1_name }),
-    ...(fd.director_1_designation && { director_1_designation: fd.director_1_designation }),
-    ...(fd.director_1_shareholding_pct && { director_1_shareholding_pct: fd.director_1_shareholding_pct }),
-    ...(fd.director_1_is_ubo    && { director_1_is_ubo: fd.director_1_is_ubo }),
-    ...(fd.director_2_name      && { director_2_name: fd.director_2_name }),
-    ...(fd.director_2_designation && { director_2_designation: fd.director_2_designation }),
-    ...(fd.director_2_shareholding_pct && { director_2_shareholding_pct: fd.director_2_shareholding_pct }),
-    ...(fd.director_2_is_ubo    && { director_2_is_ubo: fd.director_2_is_ubo }),
-
-    // Bank
-    ...(state.selectedBank               && { bank_name: state.selectedBank }),
-    ...(fd.bank_account_holder_name      && { bank_account_holder_name: fd.bank_account_holder_name }),
-    ...(fd.bank_account_type             && { bank_account_type: fd.bank_account_type }),
-    ...(fd.bank_ifsc_code                && { bank_ifsc_code: fd.bank_ifsc_code }),
-  });
-
-  setTimeout(() => {
+  setTimeout(function() {
     state.completedSteps.add(3);
     document.getElementById('ref-id').textContent = refId;
-    document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.step-panel').forEach(function(p) { p.classList.remove('active'); });
     document.getElementById('step-4').classList.add('active');
     document.getElementById('overall-pct').textContent = '100% complete';
-    document.querySelectorAll('.ps-bar').forEach(b => { b.classList.remove('active'); b.classList.add('done'); });
+    document.querySelectorAll('.ps-bar').forEach(function(b) { b.classList.remove('active'); b.classList.add('done'); });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, 2000);
 }
@@ -2198,6 +2089,7 @@ function submitKYC() {
 
 </body>
 </html>
+
 
 
 
