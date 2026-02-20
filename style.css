@@ -351,12 +351,14 @@ body {
     display: block;
     width: fit-content;
     transition: all 0.3s;
+    z-index:100000;
 }
 
 .btn-get-started:hover {
     background: #08393C;
     transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(10, 77, 77, 0.3);
+    z-index: 10000000;
 }
 
 .flags-container {
@@ -1229,6 +1231,7 @@ body {
     }
 
 }
+
 
 
 
