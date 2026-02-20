@@ -193,6 +193,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 16px;
+    visibility: visible;
 }
 
 .list-item {
@@ -1232,6 +1233,7 @@ body {
     }
 
 }
+
 
 
 
