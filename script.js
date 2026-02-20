@@ -215,7 +215,11 @@
       menu.classList.remove('open');
     }
   });
-
+function positionDropdown() {
+  const rect = btn.getBoundingClientRect();
+  dropdown.style.top  = (rect.bottom + 8) + 'px';
+  dropdown.style.left = Math.max(8, rect.right - 240) + 'px';
+}
   // ── Logout ──
   window.handleLogout = function() {
     // Clear all session keys
@@ -458,4 +462,5 @@ window.addEventListener('load', () => {
         document.body.style.opacity = '1';
     }, 100);
 });
+
 
