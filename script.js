@@ -114,7 +114,7 @@
         border-radius: 12px;
         box-shadow: 0 8px 30px rgba(0,0,0,0.12);
         overflow: visible;
-        z-index: 999;
+        z-index: 99999999;
         animation: dropdownIn 0.15s ease;
       }
       .nav-user-menu.open .nav-user-dropdown { display: block; }
@@ -457,6 +457,7 @@ window.addEventListener('load', () => {
         document.body.style.opacity = '1';
     }, 100);
 });
+
 
 
 
