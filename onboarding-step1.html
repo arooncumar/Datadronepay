@@ -1341,6 +1341,16 @@ const state = {
   userName: null,
 };
 
+// Fires once when the merchant onboarding page loads
+analytics.ready(function() {
+  segTrack('Merchant Onboarding Started', {
+    step_number: 1,
+    step_name: 'Business Identity',
+    total_steps: 4,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 /* ─────────────────────────────────────────────────────────────────
    SESSION LINKING — Re-identify with login email on KYC page load
    This merges the KYC session with the same profile created on login.
@@ -2174,4 +2184,5 @@ function submitKYC() {
 
 </body>
 </html>
+
 
