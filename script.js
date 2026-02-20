@@ -113,7 +113,7 @@
         border: 1px solid #e2e8f0;
         border-radius: 12px;
         box-shadow: 0 8px 30px rgba(0,0,0,0.12);
-        overflow: hidden;
+        overflow: visible;
         z-index: 999;
         animation: dropdownIn 0.15s ease;
       }
@@ -462,5 +462,6 @@ window.addEventListener('load', () => {
         document.body.style.opacity = '1';
     }, 100);
 });
+
 
 
