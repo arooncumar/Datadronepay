@@ -1342,19 +1342,29 @@ const state = {
 };
 
 // Fires once when the merchant onboarding page loads
-analytics.ready(function() {
-  var email = localStorage.getItem('user_email');
-  var name  = localStorage.getItem('user_name');
-
-  analytics.page('Merchant Onboarding', {
-    email:      email || null,
-    user_name:  name  || null,
-    step_number: 1,
-    step_name:  'Business Identity',
-    total_steps: 4,
-    timestamp:  new Date().toISOString()
-  });
+window.addEventListener('load', function() {
+    if (!pageTracked) {
+        pageTracked = true;
+        console.log('Step 1: Business Information page loaded');
+        
+        // Track page view event
+        if (window.analytics && typeof window.analytics.track === 'function') {
+            try {
+                analytics.track('Onboarding Step Viewed', {
+                    step: 1,
+                    step_name: 'Business Information',
+                    timestamp: new Date().toISOString()
+                });
+                console.log('✓ Step 1 page view tracked');
+            } catch (error) {
+                console.error('✗ Error tracking Step 1 page view:', error);
+            }
+        } else {
+            console.error('✗ Segment analytics not available');
+        }
+    }
 });
+
 /* ─────────────────────────────────────────────────────────────────
    SESSION LINKING — Re-identify with login email on KYC page load
    This merges the KYC session with the same profile created on login.
@@ -2188,6 +2198,7 @@ function submitKYC() {
 
 </body>
 </html>
+
 
 
 
