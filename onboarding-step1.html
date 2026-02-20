@@ -1678,6 +1678,15 @@ document.getElementById('pan-input').addEventListener('input', function() {
   updateSaveStatus();
 });
 
+  // Fires once when the merchant onboarding page loads
+analytics.ready(function() {
+  segTrack('Merchant Onboarding Started', {
+    step_number: 1,
+    step_name: 'Business Identity',
+    total_steps: 4,
+    timestamp: new Date().toISOString(),
+  });
+});
 function verifyPAN() {
   const pan = document.getElementById('pan-input').value;
   const btn = document.getElementById('pan-verify-btn');
@@ -2077,6 +2086,7 @@ function verifyIFSC() {
   }, 1200);
 }
 
+
 /* ────────────────────────────────────────────
    Final Submission
 ──────────────────────────────────────────── */
@@ -2164,3 +2174,4 @@ function submitKYC() {
 
 </body>
 </html>
+
